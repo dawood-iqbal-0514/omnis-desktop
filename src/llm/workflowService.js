@@ -7,9 +7,8 @@ let jsonrepair;
 
 async function loadDependencies() {
   if (!LlamaModel) {
-    // Fix binary path for packaged Electron app
-    const binariesPath = __dirname.replace('app.asar', 'app.asar.unpacked');
-    process.env.NODE_LLAMA_CPP_BINARIES_PATH = path.join(binariesPath, '..', 'node_modules', '@node-llama-cpp');
+    // Don't set binaries path - let node-llama-cpp auto-detect
+    // It will find them in node_modules correctly
     
     const llamaModule = await import('node-llama-cpp');
     getLlama = llamaModule.getLlama;
@@ -39,12 +38,7 @@ class WorkflowLLMService {
     console.log('🤖 Loading dependencies...');
     await loadDependencies();
 
-    console.log('🤖 Initializing llama bindings...');
-    
-    // Get the unpacked path for binaries
-    const unpackedPath = __dirname.replace('app.asar', 'app.asar.unpacked');
-    const binariesDir = path.join(unpackedPath, '..', 'node_modules', '@node-llama-cpp');
-    console.log('🔍 Looking for binaries in:', binariesDir);
+    console.log('🤖 Initializing llama bindings (CPU-only mode)...');
     
     this.llama = await getLlama({
       build: 'never', // Don't try to build, use pre-built binaries
