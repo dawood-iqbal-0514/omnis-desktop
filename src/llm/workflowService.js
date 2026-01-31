@@ -40,8 +40,10 @@ class WorkflowLLMService {
 
     console.log('🤖 Initializing llama bindings (CPU-only mode)...');
     
+    // Force CPU-only mode to avoid GPU/Vulkan crashes
     this.llama = await getLlama({
-      build: 'never', // Don't try to build, use pre-built binaries
+      build: 'never',
+      gpu: false, // Disable GPU acceleration
     });
 
     console.log('🤖 Loading Qwen2.5-1.5B model...');
@@ -86,6 +88,7 @@ class WorkflowLLMService {
 
     this.model = await this.llama.loadModel({
       modelPath: modelPath,
+      gpuLayers: 0, // Force CPU-only, no GPU layers
     });
 
     this.context = await this.model.createContext({
