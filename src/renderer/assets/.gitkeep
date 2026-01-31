@@ -1,0 +1,4 @@
+# Renderer Assets Folder
+# Place UI assets here (logos, images, etc.)
+# Access them in components like: import logo from '../assets/logo.png'
+

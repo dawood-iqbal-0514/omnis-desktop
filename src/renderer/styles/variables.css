@@ -1,0 +1,79 @@
+/* Theme Color Variables - Single Source of Truth */
+:root {
+  /* Primary Accent - Vibrant Purplish */
+  --color-primary-accent: #9a1959;
+  
+  /* Secondary/Muted - Dark Plum */
+  --color-secondary-muted: #5b2245;
+  
+  /* Base Background - Deep Slate Black */
+  --color-base-background: #1b222a;
+  
+  /* Derived Colors */
+  --color-primary-accent-hover: #b01f6a;
+  --color-primary-accent-light: #c42d7a;
+  --color-primary-accent-dark: #7a1447;
+  
+  --color-secondary-muted-hover: #6d2851;
+  --color-secondary-muted-light: #7d2e5d;
+  --color-secondary-muted-dark: #491a37;
+  
+  --color-base-background-light: #252d36;
+  --color-base-background-dark: #141920;
+  
+  /* Text Colors */
+  --color-text-primary: #ffffff;
+  --color-text-secondary: #b8bcc3;
+  --color-text-muted: #8a8f96;
+  
+  /* Border Colors */
+  --color-border-primary: rgba(154, 25, 89, 0.3);
+  --color-border-secondary: rgba(91, 34, 69, 0.5);
+  --color-border-muted: rgba(255, 255, 255, 0.1);
+  
+  /* Status Colors */
+  --color-success: #10b981;
+  --color-error: #ef4444;
+  --color-warning: #f59e0b;
+  --color-info: #3b82f6;
+}
+
+/* Light Theme */
+[data-theme="light"] {
+  /* Primary Accent - Same */
+  --color-primary-accent: #9a1959;
+  
+  /* Secondary/Muted - Lighter */
+  --color-secondary-muted: #e8d5e3;
+  
+  /* Base Background - Light */
+  --color-base-background: #f5f7fa;
+  
+  /* Derived Colors */
+  --color-primary-accent-hover: #b01f6a;
+  --color-primary-accent-light: #c42d7a;
+  --color-primary-accent-dark: #7a1447;
+  
+  --color-secondary-muted-hover: #d4c0d0;
+  --color-secondary-muted-light: #f0e8ed;
+  --color-secondary-muted-dark: #c9b5c4;
+  
+  --color-base-background-light: #ffffff;
+  --color-base-background-dark: #e8ecf1;
+  
+  /* Text Colors - Inverted */
+  --color-text-primary: #1a1a1a;
+  --color-text-secondary: #4a5568;
+  --color-text-muted: #718096;
+  
+  /* Border Colors */
+  --color-border-primary: rgba(154, 25, 89, 0.2);
+  --color-border-secondary: rgba(154, 25, 89, 0.1);
+  --color-border-muted: rgba(0, 0, 0, 0.1);
+  
+  /* Status Colors - Same */
+  --color-success: #10b981;
+  --color-error: #ef4444;
+  --color-warning: #f59e0b;
+  --color-info: #3b82f6;
+}
