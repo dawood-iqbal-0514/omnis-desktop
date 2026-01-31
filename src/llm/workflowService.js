@@ -7,9 +7,6 @@ let jsonrepair;
 
 async function loadDependencies() {
   if (!LlamaModel) {
-    // Don't set binaries path - let node-llama-cpp auto-detect
-    // It will find them in node_modules correctly
-    
     const llamaModule = await import('node-llama-cpp');
     getLlama = llamaModule.getLlama;
     LlamaModel = llamaModule.LlamaModel;

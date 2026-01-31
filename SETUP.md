@@ -1,5 +1,20 @@
 # LLM Model Setup
 
+## Installation Issues?
+
+If `npm install` fails with error `code 3221225477` (node-llama-cpp crash), try:
+
+```bash
+npm install --ignore-scripts
+```
+
+Then manually run the postinstall:
+```bash
+npm rebuild
+```
+
+If it still crashes, the `.npmrc` file should prevent GPU detection during install.
+
 ## Download AI Model
 
 The AI model (1.5GB) is not included in the repository. You must download it before running the app.
