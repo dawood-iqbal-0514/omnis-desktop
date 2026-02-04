@@ -1,30 +1,59 @@
-﻿import React, { useState } from 'react';
+﻿import React, { useEffect } from 'react';
+import { Formik, Form } from 'formik';
 import { ButtonPlain } from '../components/Button';
+import { FormField, FormCheckbox } from '../components/Form';
 import useAuthStore from '../store/authStore';
+import useToast from '../hooks/useToast';
+import { signUpSchema, initialValues } from '../schemas/auth.schemas';
 import logo from '@assets/logos/logo.png';
 
-const SignUp = ({ onSignInClick }) => {
-  const [name, setName] = useState('');
-  const [email, setEmail] = useState('');
-  const [password, setPassword] = useState('');
-  const [confirmPassword, setConfirmPassword] = useState('');
-  const [isLoading, setIsLoading] = useState(false);
-  const login = useAuthStore((state) => state.login);
+const SignUp = ({ onSignInClick, onRedirectToDashboard, onEmailVerification }) => {
+  const signup = useAuthStore((state) => state.signup);
+  const isAuthenticated = useAuthStore((state) => state.isAuthenticated);
+  const { showSuccess, showError } = useToast();
 
-  const handleSubmit = async (e) => {
-    e.preventDefault();
-
-    if (password !== confirmPassword) {
-      alert('Passwords do not match');
-      return;
+  // Redirect to dashboard if already authenticated
+  useEffect(() => {
+    const token = localStorage.getItem('omnis-reach-token');
+    if (token && isAuthenticated && onRedirectToDashboard) {
+      onRedirectToDashboard();
     }
+  }, [isAuthenticated, onRedirectToDashboard]);
 
-    setIsLoading(true);
+  const handleSubmit = async (values, { setSubmitting }) => {
+    try {
+      const response = await signup(values.name, values.email, values.password);
 
-    setTimeout(() => {
-      login({ email, name });
-      setIsLoading(false);
-    }, 1000);
+      if (response.success) {
+        const userData = {
+          email: response.data.user.email,
+          name: response.data.user.name,
+        };
+        
+        // Don't show toast here - EmailVerification page will show it after OTP is sent
+        // Navigate to email verification page
+        if (onEmailVerification) {
+          onEmailVerification(userData.email, userData.name);
+        }
+      } else {
+        showError(response.error || 'Failed to create account');
+      }
+    } catch (err) {
+      // Handle different error cases
+      if (err.message && err.message.includes('already exists')) {
+        // Check if the message says to sign in (means email is verified)
+        if (err.message.includes('sign in')) {
+          showError('An account with this email already exists. Please sign in instead.');
+        } else {
+          // Otherwise, email is not verified
+          showError('An account with this email exists but is not verified. Please check your email for the verification code or try signing in.');
+        }
+      } else {
+        showError(err.message || 'Failed to create account. Please try again.');
+      }
+    } finally {
+      setSubmitting(false);
+    }
   };
 
   return (
@@ -37,91 +66,72 @@ const SignUp = ({ onSignInClick }) => {
         </div>
 
         <div className="bg-[var(--color-base-background-light)] rounded-lg p-8 border border-border-muted">
-          <form onSubmit={handleSubmit} className="space-y-6">
-            <div>
-              <label className="block text-text-secondary text-sm font-medium mb-2">
-                Full Name
-              </label>
-              <input
-                type="text"
-                value={name}
-                onChange={(e) => setName(e.target.value)}
-                required
-                className="w-full bg-base-background border border-border-muted rounded-lg px-4 py-3 text-text-primary placeholder-text-muted focus:outline-none focus:ring-2 focus:ring-primary-accent focus:border-transparent transition-all"
-                placeholder="John Doe"
-              />
-            </div>
+          <Formik
+            initialValues={initialValues.signUp}
+            validationSchema={signUpSchema}
+            onSubmit={handleSubmit}
+          >
+            {({ isSubmitting }) => (
+              <Form className="space-y-6">
+                <FormField
+                  name="name"
+                  label="Full Name"
+                  placeholder="John Doe"
+                  required
+                />
 
-            <div>
-              <label className="block text-text-secondary text-sm font-medium mb-2">
-                Email Address
-              </label>
-              <input
-                type="email"
-                value={email}
-                onChange={(e) => setEmail(e.target.value)}
-                required
-                className="w-full bg-base-background border border-border-muted rounded-lg px-4 py-3 text-text-primary placeholder-text-muted focus:outline-none focus:ring-2 focus:ring-primary-accent focus:border-transparent transition-all"
-                placeholder="you@example.com"
-              />
-            </div>
+                <FormField
+                  name="email"
+                  type="email"
+                  label="Email Address"
+                  placeholder="you@example.com"
+                  required
+                />
 
-            <div>
-              <label className="block text-text-secondary text-sm font-medium mb-2">
-                Password
-              </label>
-              <input
-                type="password"
-                value={password}
-                onChange={(e) => setPassword(e.target.value)}
-                required
-                minLength={8}
-                className="w-full bg-base-background border border-border-muted rounded-lg px-4 py-3 text-text-primary placeholder-text-muted focus:outline-none focus:ring-2 focus:ring-primary-accent focus:border-transparent transition-all"
-                placeholder="At least 8 characters"
-              />
-            </div>
+                <FormField
+                  name="password"
+                  type="password"
+                  label="Password"
+                  placeholder="At least 8 characters"
+                  required
+                />
 
-            <div>
-              <label className="block text-text-secondary text-sm font-medium mb-2">
-                Confirm Password
-              </label>
-              <input
-                type="password"
-                value={confirmPassword}
-                onChange={(e) => setConfirmPassword(e.target.value)}
-                required
-                className="w-full bg-base-background border border-border-muted rounded-lg px-4 py-3 text-text-primary placeholder-text-muted focus:outline-none focus:ring-2 focus:ring-primary-accent focus:border-transparent transition-all"
-                placeholder="Confirm your password"
-              />
-            </div>
+                <FormField
+                  name="confirmPassword"
+                  type="password"
+                  label="Confirm Password"
+                  placeholder="Confirm your password"
+                  required
+                />
 
-            <div className="flex items-center">
-              <input
-                type="checkbox"
-                required
-                className="w-4 h-4 text-primary-accent bg-base-background border-border-muted rounded focus:ring-primary-accent"
-              />
-              <span className="ml-2 text-sm text-text-secondary">
-                I agree to the{' '}
-                <button type="button" className="text-primary-accent hover:text-[var(--color-primary-accent-hover)]">
-                  Terms of Service
-                </button>{' '}
-                and{' '}
-                <button type="button" className="text-primary-accent hover:text-[var(--color-primary-accent-hover)]">
-                  Privacy Policy
-                </button>
-              </span>
-            </div>
+                <FormCheckbox
+                  name="termsAccepted"
+                  label={
+                    <>
+                      I agree to the{' '}
+                      <button type="button" className="text-primary-accent hover:text-[var(--color-primary-accent-hover)]">
+                        Terms of Service
+                      </button>{' '}
+                      and{' '}
+                      <button type="button" className="text-primary-accent hover:text-[var(--color-primary-accent-hover)]">
+                        Privacy Policy
+                      </button>
+                    </>
+                  }
+                  required
+                />
 
-            <ButtonPlain
-              type="submit"
-              variant="primary"
-              className="w-full"
-              isLoading={isLoading}
-            >
-              Create Account
-            </ButtonPlain>
-          </form>
+                <ButtonPlain
+                  type="submit"
+                  variant="primary"
+                  className="w-full"
+                  isLoading={isSubmitting}
+                >
+                  Create Account
+                </ButtonPlain>
+              </Form>
+            )}
+          </Formik>
 
           <div className="mt-6 text-center">
             <p className="text-text-secondary text-sm">
@@ -142,4 +152,3 @@ const SignUp = ({ onSignInClick }) => {
 };
 
 export default SignUp;
-

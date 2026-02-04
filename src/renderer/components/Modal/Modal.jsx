@@ -38,17 +38,16 @@ const Modal = ({ isOpen, onClose, children, title, size = 'md' }) => {
   return (
     <div
       className="fixed inset-0 z-50 flex items-center justify-center p-4"
-      onClick={onClose}
     >
-      {}
+      {/* Backdrop */}
       <div
         className="absolute inset-0 bg-black/50 backdrop-blur-sm transition-opacity"
         onClick={onClose}
       />
 
-      {}
+      {/* Modal Content */}
       <div
-        className={`relative w-full ${sizeClasses[size]} bg-[var(--color-base-background-light)] rounded-lg shadow-xl border border-border-muted transform transition-all ${
+        className={`relative z-10 w-full ${sizeClasses[size]} bg-[var(--color-base-background-light)] rounded-lg shadow-xl border border-border-muted transform transition-all ${
           isOpen ? 'scale-100 opacity-100' : 'scale-95 opacity-0'
         }`}
         onClick={(e) => e.stopPropagation()}

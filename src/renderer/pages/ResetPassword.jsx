@@ -1,86 +1,46 @@
-﻿import React, { useState, useRef } from 'react';
+﻿import React, { useState, useEffect } from 'react';
+import { Formik, Form } from 'formik';
 import { ButtonPlain } from '../components/Button';
+import { OTPInput, FormField } from '../components/Form';
+import useAuthStore from '../store/authStore';
+import useToast from '../hooks/useToast';
+import { resetPasswordSchema, initialValues } from '../schemas/auth.schemas';
 import logo from '@assets/logos/logo.png';
 
-const ResetPassword = ({ email, onBack, onResetSuccess }) => {
-  const [otp, setOtp] = useState(['', '', '', '', '', '']);
-  const [password, setPassword] = useState('');
-  const [confirmPassword, setConfirmPassword] = useState('');
-  const [error, setError] = useState('');
-  const [isLoading, setIsLoading] = useState(false);
+const ResetPassword = ({ email, onBack, onResetSuccess, onRedirectToDashboard }) => {
   const [success, setSuccess] = useState(false);
-  const otpInputs = useRef([]);
+  const isAuthenticated = useAuthStore((state) => state.isAuthenticated);
+  const resetPassword = useAuthStore((state) => state.resetPassword);
+  const { showSuccess, showError } = useToast();
 
-  const handleOtpChange = (index, value) => {
-
-    if (value && !/^\d+$/.test(value)) return;
-
-    const newOtp = [...otp];
-    newOtp[index] = value.slice(-1); 
-    setOtp(newOtp);
-
-    if (value && index < 5) {
-      otpInputs.current[index + 1]?.focus();
+  // Redirect to dashboard if already authenticated
+  useEffect(() => {
+    const token = localStorage.getItem('omnis-reach-token');
+    if (token && isAuthenticated && onRedirectToDashboard) {
+      onRedirectToDashboard();
     }
-  };
+  }, [isAuthenticated, onRedirectToDashboard]);
 
-  const handleOtpKeyDown = (index, e) => {
+  const handleSubmit = async (values, { setSubmitting, resetForm }) => {
+    try {
+      const response = await resetPassword(email, values.otp, values.password);
 
-    if (e.key === 'Backspace' && !otp[index] && index > 0) {
-      otpInputs.current[index - 1]?.focus();
-    }
-  };
+      if (response.success) {
+        setSuccess(true);
+        showSuccess('Password reset successful!');
 
-  const handleOtpPaste = (e) => {
-    e.preventDefault();
-    const pastedData = e.clipboardData.getData('text').slice(0, 6);
-    if (/^\d+$/.test(pastedData)) {
-      const newOtp = [...otp];
-      for (let i = 0; i < 6; i++) {
-        newOtp[i] = pastedData[i] || '';
+        setTimeout(() => {
+          onResetSuccess();
+          resetForm();
+        }, 2000);
+      } else {
+        showError(response.error || 'Failed to reset password');
       }
-      setOtp(newOtp);
-
-      const lastFilledIndex = Math.min(pastedData.length - 1, 5);
-      otpInputs.current[lastFilledIndex]?.focus();
+    } catch (err) {
+      showError(err.message || 'Failed to reset password. Please try again.');
+    } finally {
+      setSubmitting(false);
     }
-  };
-
-  const handleSubmit = async (e) => {
-    e.preventDefault();
-    setError('');
-
-    const otpString = otp.join('');
-    if (otpString.length !== 6) {
-      setError('Please enter the complete 6-digit OTP.');
-      return;
-    }
-
-    if (!password) {
-      setError('Please enter a new password.');
-      return;
-    }
-
-    if (password.length < 6) {
-      setError('Password must be at least 6 characters long.');
-      return;
-    }
-
-    if (password !== confirmPassword) {
-      setError('Passwords do not match.');
-      return;
-    }
-
-    setIsLoading(true);
-
-    setTimeout(() => {
-      setIsLoading(false);
-      setSuccess(true);
-
-      setTimeout(() => {
-        onResetSuccess();
-      }, 2000);
-    }, 2000);
   };
 
   return (
@@ -105,87 +65,53 @@ const ResetPassword = ({ email, onBack, onResetSuccess }) => {
             <p className="text-text-secondary text-sm">Redirecting to sign in...</p>
           </div>
         ) : (
-          <form onSubmit={handleSubmit} className="space-y-6">
-          {}
-          <div>
-            <label className="block text-text-secondary text-sm font-medium mb-3 text-center">
-              Enter OTP
-            </label>
-            <div className="flex justify-center gap-2">
-              {otp.map((digit, index) => (
-                <input
-                  key={index}
-                  ref={(el) => (otpInputs.current[index] = el)}
-                  type="text"
-                  inputMode="numeric"
-                  maxLength={1}
-                  value={digit}
-                  onChange={(e) => handleOtpChange(index, e.target.value)}
-                  onKeyDown={(e) => handleOtpKeyDown(index, e)}
-                  onPaste={handleOtpPaste}
-                  className="w-12 h-12 text-center text-lg font-semibold bg-base-background border border-border-muted rounded-lg text-text-primary focus:outline-none focus:ring-2 focus:ring-primary-accent focus:border-transparent transition-all"
-                  disabled={isLoading}
+          <Formik
+            initialValues={initialValues.resetPassword}
+            validationSchema={resetPasswordSchema}
+            onSubmit={handleSubmit}
+          >
+            {({ isSubmitting }) => (
+              <Form className="space-y-6">
+                <OTPInput name="otp" label="Enter OTP" />
+
+                <FormField
+                  name="password"
+                  type="password"
+                  label="New Password"
+                  placeholder="Enter new password"
+                  required
                 />
-              ))}
-            </div>
-          </div>
 
-          {}
-          <div>
-            <label className="block text-text-secondary text-sm font-medium mb-1" htmlFor="password">
-              New Password
-            </label>
-            <input
-              type="password"
-              id="password"
-              className="w-full px-4 py-2 rounded-lg bg-base-background border border-border-muted text-text-primary focus:outline-none focus:ring-2 focus:ring-primary-accent"
-              placeholder="Enter new password"
-              value={password}
-              onChange={(e) => setPassword(e.target.value)}
-              disabled={isLoading}
-            />
-          </div>
+                <FormField
+                  name="confirmPassword"
+                  type="password"
+                  label="Confirm New Password"
+                  placeholder="Confirm new password"
+                  required
+                />
 
-          {}
-          <div>
-            <label className="block text-text-secondary text-sm font-medium mb-1" htmlFor="confirmPassword">
-              Confirm New Password
-            </label>
-            <input
-              type="password"
-              id="confirmPassword"
-              className="w-full px-4 py-2 rounded-lg bg-base-background border border-border-muted text-text-primary focus:outline-none focus:ring-2 focus:ring-primary-accent"
-              placeholder="Confirm new password"
-              value={confirmPassword}
-              onChange={(e) => setConfirmPassword(e.target.value)}
-              disabled={isLoading}
-            />
-          </div>
-
-          {error && <p className="text-error text-sm text-center">{error}</p>}
-
-          <ButtonPlain type="submit" variant="primary" className="w-full" isLoading={isLoading}>
-            Reset Password
-          </ButtonPlain>
-        </form>
+                <ButtonPlain type="submit" variant="primary" className="w-full" isLoading={isSubmitting}>
+                  Reset Password
+                </ButtonPlain>
+              </Form>
+            )}
+          </Formik>
         )}
 
         {!success && (
           <div className="mt-6 text-center space-y-2">
-          <button
-            onClick={() => onBack(email)}
-            className="text-text-secondary text-sm hover:text-primary-accent transition-colors focus:outline-none block w-full"
-            disabled={isLoading}
-          >
-            ← Back to Forgot Password
-          </button>
-          <button
-            onClick={() => onBack()}
-            className="text-text-secondary text-sm hover:text-primary-accent transition-colors focus:outline-none block w-full"
-            disabled={isLoading}
-          >
-            Back to Sign In
-          </button>
+            <button
+              onClick={() => onBack(email)}
+              className="text-text-secondary text-sm hover:text-primary-accent transition-colors focus:outline-none block w-full"
+            >
+              ← Back to Forgot Password
+            </button>
+            <button
+              onClick={() => onBack()}
+              className="text-text-secondary text-sm hover:text-primary-accent transition-colors focus:outline-none block w-full"
+            >
+              Back to Sign In
+            </button>
           </div>
         )}
       </div>
@@ -194,4 +120,3 @@ const ResetPassword = ({ email, onBack, onResetSuccess }) => {
 };
 
 export default ResetPassword;
-

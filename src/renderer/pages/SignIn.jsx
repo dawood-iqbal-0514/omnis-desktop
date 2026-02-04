@@ -1,22 +1,49 @@
-﻿import React, { useState } from 'react';
+﻿import React, { useEffect } from 'react';
+import { Formik, Form } from 'formik';
 import { ButtonPlain } from '../components/Button';
+import { FormField } from '../components/Form';
 import useAuthStore from '../store/authStore';
+import useToast from '../hooks/useToast';
+import { signInSchema, initialValues } from '../schemas/auth.schemas';
 import logo from '@assets/logos/logo.png';
 
-const SignIn = ({ onSignUpClick, onForgotPassword }) => {
-  const [email, setEmail] = useState('');
-  const [password, setPassword] = useState('');
-  const [isLoading, setIsLoading] = useState(false);
-  const login = useAuthStore((state) => state.login);
+const SignIn = ({ onSignUpClick, onForgotPassword, onRedirectToDashboard }) => {
+  const signin = useAuthStore((state) => state.signin);
+  const isAuthenticated = useAuthStore((state) => state.isAuthenticated);
+  const { showSuccess, showError } = useToast();
 
-  const handleSubmit = async (e) => {
-    e.preventDefault();
-    setIsLoading(true);
+  // Redirect to dashboard if already authenticated
+  useEffect(() => {
+    const token = localStorage.getItem('omnis-reach-token');
+    if (token && isAuthenticated && onRedirectToDashboard) {
+      onRedirectToDashboard();
+    }
+  }, [isAuthenticated, onRedirectToDashboard]);
 
-    setTimeout(() => {
-      login({ email, name: email.split('@')[0] });
-      setIsLoading(false);
-    }, 1000);
+  const handleSubmit = async (values, { setSubmitting }) => {
+    try {
+      const response = await signin(values.email, values.password);
+
+      if (response.success) {
+        showSuccess('Signed in successfully!');
+        // Navigation will be handled by App.jsx based on auth state
+      } else {
+        // Show the specific error message from backend
+        showError(response.error || 'Failed to sign in');
+      }
+    } catch (err) {
+      // Handle specific error cases
+      if (err.message && err.message.includes('Account does not exist')) {
+        showError('Account does not exist. Please sign up.');
+      } else if (err.message && err.message.includes('Email not verified')) {
+        showError('Email not verified. Please sign up again.');
+      } else {
+        // Show the error message from backend (could be "Invalid email or password")
+        showError(err.message || 'Failed to sign in. Please try again.');
+      }
+    } finally {
+      setSubmitting(false);
+    }
   };
 
   return (
@@ -29,61 +56,50 @@ const SignIn = ({ onSignUpClick, onForgotPassword }) => {
         </div>
 
         <div className="bg-[var(--color-base-background-light)] rounded-lg p-8 border border-border-muted">
-          <form onSubmit={handleSubmit} className="space-y-6">
-            <div>
-              <label className="block text-text-secondary text-sm font-medium mb-2">
-                Email Address
-              </label>
-              <input
-                type="email"
-                value={email}
-                onChange={(e) => setEmail(e.target.value)}
-                required
-                className="w-full bg-base-background border border-border-muted rounded-lg px-4 py-3 text-text-primary placeholder-text-muted focus:outline-none focus:ring-2 focus:ring-primary-accent focus:border-transparent transition-all"
-                placeholder="you@example.com"
-              />
-            </div>
-
-            <div>
-              <label className="block text-text-secondary text-sm font-medium mb-2">
-                Password
-              </label>
-              <input
-                type="password"
-                value={password}
-                onChange={(e) => setPassword(e.target.value)}
-                required
-                className="w-full bg-base-background border border-border-muted rounded-lg px-4 py-3 text-text-primary placeholder-text-muted focus:outline-none focus:ring-2 focus:ring-primary-accent focus:border-transparent transition-all"
-                placeholder="Enter your password"
-              />
-            </div>
-
-            <div className="flex items-center justify-between">
-              <label className="flex items-center">
-                <input
-                  type="checkbox"
-                  className="w-4 h-4 text-primary-accent bg-base-background border-border-muted rounded focus:ring-primary-accent"
+          <Formik
+            initialValues={initialValues.signIn}
+            validationSchema={signInSchema}
+            onSubmit={handleSubmit}
+          >
+            {({ isSubmitting }) => (
+              <Form className="space-y-6">
+                <FormField
+                  name="email"
+                  type="email"
+                  label="Email Address"
+                  placeholder="you@example.com"
+                  required
                 />
-                <span className="ml-2 text-sm text-text-secondary">Remember me</span>
-              </label>
-              <button
-                type="button"
-                onClick={onForgotPassword}
-                className="text-sm text-primary-accent hover:text-[var(--color-primary-accent-hover)]"
-              >
-                Forgot password?
-              </button>
-            </div>
 
-            <ButtonPlain
-              type="submit"
-              variant="primary"
-              className="w-full"
-              isLoading={isLoading}
-            >
-              Sign In
-            </ButtonPlain>
-          </form>
+                <FormField
+                  name="password"
+                  type="password"
+                  label="Password"
+                  placeholder="Enter your password"
+                  required
+                />
+
+                <div className="flex items-center justify-end">
+                  <button
+                    type="button"
+                    onClick={onForgotPassword}
+                    className="text-sm text-primary-accent hover:text-[var(--color-primary-accent-hover)]"
+                  >
+                    Forgot password?
+                  </button>
+                </div>
+
+                <ButtonPlain
+                  type="submit"
+                  variant="primary"
+                  className="w-full"
+                  isLoading={isSubmitting}
+                >
+                  Sign In
+                </ButtonPlain>
+              </Form>
+            )}
+          </Formik>
 
           <div className="mt-6 text-center">
             <p className="text-text-secondary text-sm">
@@ -104,4 +120,3 @@ const SignIn = ({ onSignUpClick, onForgotPassword }) => {
 };
 
 export default SignIn;
-
