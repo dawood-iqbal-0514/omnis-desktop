@@ -1,10 +1,11 @@
 ﻿const { ipcMain } = require('electron');
-const { AutomationOrchestrator } = require('../../automation');
 
 let orchestrator = null;
 
 function getOrchestrator() {
   if (!orchestrator) {
+    // Lazy-load to prevent platforms/index.js from blocking IPC setup
+    const { AutomationOrchestrator } = require('../../automation');
     orchestrator = new AutomationOrchestrator();
   }
   return orchestrator;
