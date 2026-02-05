@@ -18,6 +18,9 @@ release2/
 # Model files (too large for git)
 *.gguf
 
+# Chrome Profiles (user data)
+Chrome_Profiles/
+
 # Misc
 .DS_Store
 *.pem

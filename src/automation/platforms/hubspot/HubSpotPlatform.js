@@ -1,4 +1,3 @@
-﻿
 const { BasePlatform } = require('../base');
 
 class HubSpotPlatform extends BasePlatform {
@@ -11,17 +10,17 @@ class HubSpotPlatform extends BasePlatform {
     });
 
     this.apiKey = null;
-    this.client = null;
+    this.accessToken = null;
   }
 
   async connect(credentials) {
-    this.validateParams(credentials, ['apiKey']);
+    this.validateParams(credentials, ['accessToken']);
 
     try {
-      this.log('connect', 'Validating API key...');
+      this.log('connect', 'Validating access token...');
 
-      this.apiKey = credentials.apiKey;
-      this.setConnected(true, { apiKey: '***' + credentials.apiKey.slice(-4) });
+      this.accessToken = credentials.accessToken;
+      this.setConnected(true, { accessToken: '***' + credentials.accessToken.slice(-4) });
 
       this.log('connect', 'Successfully connected to HubSpot');
     } catch (error) {
@@ -31,8 +30,8 @@ class HubSpotPlatform extends BasePlatform {
   }
 
   async disconnect() {
+    this.accessToken = null;
     this.apiKey = null;
-    this.client = null;
     this.setConnected(false);
     this.log('disconnect', 'Disconnected from HubSpot');
   }
@@ -45,9 +44,9 @@ class HubSpotPlatform extends BasePlatform {
     const actions = {
       'create_contact': () => this.createContact(params),
       'update_contact': () => this.updateContact(params),
-      'get_contact': () => this.getContact(params),
+      'get_contacts': () => this.getContacts(params),
       'create_deal': () => this.createDeal(params),
-      'add_note': () => this.addNote(params),
+      'send_email': () => this.sendEmail(params),
     };
 
     const handler = actions[action];
@@ -75,24 +74,25 @@ class HubSpotPlatform extends BasePlatform {
       {
         id: 'update_contact',
         name: 'Update Contact',
-        description: 'Update an existing contact',
+        description: 'Update an existing HubSpot contact',
         params: [
           { name: 'contactId', type: 'string', required: true, description: 'Contact ID' },
           { name: 'properties', type: 'object', required: true, description: 'Properties to update' },
         ],
       },
       {
-        id: 'get_contact',
-        name: 'Get Contact',
-        description: 'Get contact details',
+        id: 'get_contacts',
+        name: 'Get Contacts',
+        description: 'Retrieve contacts from HubSpot',
         params: [
-          { name: 'email', type: 'string', required: true, description: 'Contact email' },
+          { name: 'limit', type: 'number', required: false, description: 'Number of contacts to retrieve' },
+          { name: 'query', type: 'string', required: false, description: 'Search query' },
         ],
       },
       {
         id: 'create_deal',
         name: 'Create Deal',
-        description: 'Create a new deal',
+        description: 'Create a new deal in HubSpot',
         params: [
           { name: 'dealName', type: 'string', required: true, description: 'Deal name' },
           { name: 'amount', type: 'number', required: false, description: 'Deal amount' },
@@ -100,45 +100,42 @@ class HubSpotPlatform extends BasePlatform {
         ],
       },
       {
-        id: 'add_note',
-        name: 'Add Note',
-        description: 'Add a note to a contact or deal',
+        id: 'send_email',
+        name: 'Send Email',
+        description: 'Send an email through HubSpot',
         params: [
-          { name: 'objectType', type: 'string', required: true, description: 'contact or deal' },
-          { name: 'objectId', type: 'string', required: true, description: 'Object ID' },
-          { name: 'note', type: 'string', required: true, description: 'Note content' },
+          { name: 'to', type: 'string', required: true, description: 'Recipient email' },
+          { name: 'subject', type: 'string', required: true, description: 'Email subject' },
+          { name: 'body', type: 'string', required: true, description: 'Email body' },
         ],
       },
     ];
   }
 
+  // Action implementations (placeholder - would call HubSpot API)
   async createContact(params) {
-
     this.log('createContact', 'Creating contact...', params);
-    return { success: true, contactId: 'mock-contact-id' };
+    // TODO: Implement actual HubSpot API call
+    return { success: true, contactId: 'placeholder-id' };
   }
 
   async updateContact(params) {
-
     this.log('updateContact', 'Updating contact...', params);
     return { success: true };
   }
 
-  async getContact(params) {
-
-    this.log('getContact', 'Getting contact...', params);
-    return { success: true, contact: null };
+  async getContacts(params) {
+    this.log('getContacts', 'Fetching contacts...', params);
+    return { success: true, contacts: [] };
   }
 
   async createDeal(params) {
-
     this.log('createDeal', 'Creating deal...', params);
-    return { success: true, dealId: 'mock-deal-id' };
+    return { success: true, dealId: 'placeholder-id' };
   }
 
-  async addNote(params) {
-
-    this.log('addNote', 'Adding note...', params);
+  async sendEmail(params) {
+    this.log('sendEmail', 'Sending email...', params);
     return { success: true };
   }
 }
