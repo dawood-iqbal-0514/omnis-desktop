@@ -16,22 +16,27 @@ class CerebrasService {
     return this.apiKey;
   }
 
-  async sendMessage(userMessage, chatHistory = [], platformName = null) {
+  async sendMessage(userMessage, chatHistory = [], platformName = null, customSystemPrompt = null) {
     if (!this.apiKey) {
       throw new Error('Cerebras API key not set. Please enter your API key.');
     }
 
     try {
-      // Build system prompt with platform context
-      let systemPrompt = 'You are Omnis Assistant - a sarcastic, witty, and slightly jaded AI assistant who helps users with platform integrations and tasks. You have a dry sense of humor and make jokes while being helpful. Your personality is: sarcastic, joky, witty, but still professional enough to get the job done. You tease users playfully but always deliver results.';
+      // Use custom system prompt if provided, otherwise use default
+      let systemPrompt = customSystemPrompt;
       
-      if (platformName) {
-        systemPrompt += ` The user has already selected ${platformName} as their platform. DO NOT ask about the platform again - it's already ${platformName}. The user might want to: 1) Create a workflow (trigger events, actions, conditions), 2) Perform direct actions (create/update/read records, send messages, etc.), or 3) Get information about ${platformName} capabilities. Ask what they want to do and gather the necessary details.`;
-      } else {
-        systemPrompt += ' The user might want to: 1) Create a workflow, 2) Perform direct actions, or 3) Get information about platform capabilities. First, ask which platform they want to work with, then ask what they want to do and gather the necessary details.';
+      if (!systemPrompt) {
+        // Build default system prompt with platform context
+        systemPrompt = 'You are Omnis Assistant - a sarcastic, witty, and slightly jaded AI assistant who helps users with platform integrations and tasks. You have a dry sense of humor and make jokes while being helpful. Your personality is: sarcastic, joky, witty, but still professional enough to get the job done. You tease users playfully but always deliver results.';
+        
+        if (platformName) {
+          systemPrompt += ` The user has already selected ${platformName} as their platform. DO NOT ask about the platform again - it's already ${platformName}. The user might want to: 1) Create a workflow (trigger events, actions, conditions), 2) Perform direct actions (create/update/read records, send messages, etc.), or 3) Get information about ${platformName} capabilities. Ask what they want to do and gather the necessary details.`;
+        } else {
+          systemPrompt += ' The user might want to: 1) Create a workflow, 2) Perform direct actions, or 3) Get information about platform capabilities. First, ask which platform they want to work with, then ask what they want to do and gather the necessary details.';
+        }
+        
+        systemPrompt += ' Ask concise, one-at-a-time questions with your signature sarcastic flair. Once you have all required information, respond with exactly: [COMPLETE]';
       }
-      
-      systemPrompt += ' Ask concise, one-at-a-time questions with your signature sarcastic flair. Once you have all required information, respond with exactly: [COMPLETE]';
 
       // Format messages for Cerebras API
       const messages = [
@@ -81,8 +86,19 @@ class CerebrasService {
         throw new Error('Invalid API key. Please check your Cerebras API key.');
       } else if (error.response?.status === 429) {
         throw new Error('Rate limit exceeded. Please try again later.');
-      } else if (error.code === 'ECONNABORTED') {
-        throw new Error('Request timeout. Please try again.');
+      } else if (error.response?.status === 503) {
+        throw new Error('Cerebras API is temporarily unavailable. Please try again in a few moments.');
+      } else if (error.response?.status === 500) {
+        console.error('❌ Cerebras API 500 error details:', error.response?.data);
+        throw new Error('Cerebras API encountered an internal error. Please try again or contact support if the issue persists.');
+      } else if (error.code === 'ECONNABORTED' || error.message?.includes('aborted')) {
+        throw new Error('Request was cancelled or timed out. Please try again.');
+      } else if (error.code === 'ERR_CANCELED') {
+        throw new Error('Request was cancelled. Please try again.');
+      } else if (error.code === 'EAI_AGAIN' || error.code === 'ENOTFOUND' || error.message?.includes('getaddrinfo')) {
+        throw new Error('Cannot connect to the AI service. Please check your internet connection and DNS settings.');
+      } else if (error.code === 'ECONNREFUSED' || error.code === 'ETIMEDOUT') {
+        throw new Error('Connection to the AI service failed. Please check your internet connection and try again.');
       } else {
         throw new Error(error.response?.data?.error?.message || error.message || 'Failed to get response from Cerebras API.');
       }

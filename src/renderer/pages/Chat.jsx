@@ -1,15 +1,16 @@
 ﻿import React, { useState, useRef, useEffect } from 'react';
+import Confetti from 'react-confetti';
 import { ButtonPlain, ButtonIconed } from '../components/Button';
 import { LoaderSmall } from '../components/Loader';
+import { ExecutionPlanCard, ExecutionLogs } from '../components/Chat';
 import PlatformSelectionModal from '../components/PlatformSelectionModal';
 import usePlatformStore from '../store/platformStore';
-import { formatTimeLocal12Hour, formatDateLocalRelative } from '../utils/date';
+import { formatTimeLocal12Hour } from '../utils/date';
 
 const Chat = () => {
   const selectedPlatform = usePlatformStore((state) => state.selectedPlatform);
   const setSelectedPlatform = usePlatformStore((state) => state.setSelectedPlatform);
   const [platformModalOpen, setPlatformModalOpen] = useState(false);
-  const [sidebarOpen, setSidebarOpen] = useState(false);
   
   const getWelcomeMessage = () => {
     if (selectedPlatform) {
@@ -18,27 +19,32 @@ const Chat = () => {
     return 'Oh great, another human. 🙄 I\'m Omnis Assistant. What platform are we automating today?';
   };
 
-  const [chats, setChats] = useState([{
-    id: Date.now(),
-    title: 'New Chat',
-    messages: [{
-      id: 1,
-      type: 'bot',
-      content: 'Oh great, another human. 🙄 I\'m Omnis Assistant. What platform are we automating today?',
-      timestamp: new Date().toISOString(),
-    }],
-    createdAt: new Date().toISOString(),
-    updatedAt: new Date().toISOString(),
+  const [messages, setMessages] = useState([{
+    id: 1,
+    type: 'bot',
+    content: 'Oh great, another human. 🙄 I\'m Omnis Assistant. What platform are we automating today?',
+    timestamp: new Date().toISOString(),
   }]);
-  const [activeChatId, setActiveChatId] = useState(chats[0]?.id || null);
   const [input, setInput] = useState('');
   const [isTyping, setIsTyping] = useState(false);
+  const [isExecuting, setIsExecuting] = useState(false);
+  const [executionLogs, setExecutionLogs] = useState([]);
+  const [pendingPlan, setPendingPlan] = useState(null);
+  const [showConfetti, setShowConfetti] = useState(false);
+  const [windowSize, setWindowSize] = useState({ width: window.innerWidth, height: window.innerHeight });
   const messagesEndRef = useRef(null);
   const inputRef = useRef(null);
 
+  useEffect(() => {
+    const handleResize = () => {
+      setWindowSize({ width: window.innerWidth, height: window.innerHeight });
+    };
 
-  const activeChat = chats.find(chat => chat.id === activeChatId);
-  const messages = activeChat?.messages || [];
+    window.addEventListener('resize', handleResize);
+    return () => window.removeEventListener('resize', handleResize);
+  }, []);
+
+
 
   const scrollToBottom = () => {
     messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
@@ -46,7 +52,7 @@ const Chat = () => {
 
   useEffect(() => {
     scrollToBottom();
-  }, [messages, activeChatId]);
+  }, [messages]);
 
   // Check if platform is selected when component mounts or when selectedPlatform changes
   useEffect(() => {
@@ -58,20 +64,13 @@ const Chat = () => {
         ? `Oh great, another human. 🙄 I'm Omnis Assistant. You've selected ${selectedPlatform.name} - because apparently clicking buttons is too hard - What do you want me to automate?`
         : 'Oh great, another human. 🙄 I\'m Omnis Assistant. What platform are we doing today?';
       
-      setChats(prev => prev.map(chat =>
-        chat.id === activeChatId
-          ? {
-              ...chat,
-              messages: chat.messages.map((msg, idx) =>
-                idx === 0 && msg.type === 'bot'
-                  ? { ...msg, content: welcomeMsg }
-                  : msg
-              ),
-            }
-          : chat
+      setMessages(prev => prev.map((msg, idx) =>
+        idx === 0 && msg.type === 'bot'
+          ? { ...msg, content: welcomeMsg }
+          : msg
       ));
     }
-  }, [selectedPlatform, activeChatId]);
+  }, [selectedPlatform]);
 
   const handleSend = async (e) => {
     e.preventDefault();
@@ -84,19 +83,7 @@ const Chat = () => {
       timestamp: new Date().toISOString(),
     };
 
-    const isFirstUserMessage = messages.filter(m => m.type === 'user').length === 0;
-    const newTitle = isFirstUserMessage ? input.trim().substring(0, 30) + (input.trim().length > 30 ? '...' : '') : activeChat?.title;
-
-    setChats(prev => prev.map(chat => 
-      chat.id === activeChatId
-        ? {
-            ...chat,
-            title: newTitle,
-            messages: [...chat.messages, userMessage],
-            updatedAt: new Date().toISOString(),
-          }
-        : chat
-    ));
+    setMessages(prev => [...prev, userMessage]);
     
     const userInput = input.trim();
     setInput('');
@@ -106,123 +93,365 @@ const Chat = () => {
       // Get chat history (excluding system message)
       const chatHistory = messages.filter(m => m.type !== 'bot' || !m.content.includes('Hello! I\'m your automation assistant'));
       
+      // Check if user wants to execute (after plan is shown)
+      const wantsToExecute = ['yes implement it', 'implement it', 'execute', 'go ahead', 'do it', 'run it'].some(
+        phrase => userInput.toLowerCase().includes(phrase)
+      );
+
+      if (wantsToExecute && pendingPlan) {
+        // User wants to execute, trigger approval flow
+        await handleApprovePlan();
+        return;
+      }
+
       // Call Cerebras API with platform info
       const result = await window.cerebrasAPI.sendMessage(userInput, chatHistory, selectedPlatform?.name);
 
+      console.log('📨 Chat response:', result);
+
       if (result.success) {
-        const botMessage = {
-          id: messages.length + 2,
-          type: 'bot',
-          content: result.data.message,
-          timestamp: new Date().toISOString(),
-        };
-        
-        setChats(prev => prev.map(chat =>
-          chat.id === activeChatId
-            ? {
-                ...chat,
-                messages: [...chat.messages, botMessage],
-                updatedAt: new Date().toISOString(),
-              }
-            : chat
-        ));
+        const responseType = result.data.type || 'message';
+        console.log('📨 Response type:', responseType);
+        console.log('📨 Plan data:', result.data.plan);
 
-        // If requirements are complete, extract workflow
-        if (result.data.isComplete) {
-          console.log('🎯 Requirements complete! Extracting workflow...');
-          const workflowResult = await window.cerebrasAPI.extractWorkflow([
-            ...chatHistory,
-            userMessage,
-            botMessage
-          ]);
+        if (responseType === 'plan') {
+          // Execution plan ready - show confetti
+          console.log('🎉 Showing confetti and plan card');
+          setShowConfetti(true);
+          setTimeout(() => setShowConfetti(false), 3000); // Hide after 3 seconds
 
-          if (workflowResult.success) {
-            console.log('✅ Generated Workflow:', workflowResult.data);
+          const planData = result.data.plan || {
+            message: result.data.message,
+            actions: []
+          };
 
-            const workflowMessage = {
-              id: messages.length + 3,
-              type: 'bot',
-              content: '✨ I\'ve generated your workflow! Check the console for details.',
-              timestamp: new Date().toISOString(),
-            };
+          const planMessage = {
+            id: messages.length + 2,
+            type: 'plan',
+            content: result.data.message || 'Here\'s your execution plan:',
+            plan: planData,
+            timestamp: new Date().toISOString(),
+          };
 
-            setChats(prev => prev.map(chat =>
-              chat.id === activeChatId
-                ? {
-                    ...chat,
-                    messages: [...chat.messages, workflowMessage],
-                    updatedAt: new Date().toISOString(),
-                  }
-                : chat
-            ));
-          }
+          setPendingPlan(planData);
+          
+          setMessages(prev => [...prev, planMessage]);
+        } else if (responseType === 'execute') {
+          // Execution JSON ready, start execution
+          await handleExecute(result.data.executionJSON);
+        } else {
+          // Regular message
+          const botMessage = {
+            id: messages.length + 2,
+            type: 'bot',
+            content: result.data.message || 'Processing...',
+            timestamp: new Date().toISOString(),
+          };
+          
+          setMessages(prev => [...prev, botMessage]);
         }
       } else {
         throw new Error(result.error || 'Failed to get response from Cerebras API');
       }
     } catch (error) {
       console.error('❌ Chat error:', error);
+      
+      // Extract user-friendly error message
+      let errorMsg = 'Sorry, I encountered an error. Please try again.';
+      if (error.message) {
+        if (error.message.includes('500')) {
+          errorMsg = 'The AI service encountered an internal error. Please try again in a moment.';
+        } else if (error.message.includes('503')) {
+          errorMsg = 'The AI service is temporarily unavailable. Please try again in a few moments.';
+        } else if (error.message.includes('timeout') || error.message.includes('aborted') || error.message.includes('cancelled')) {
+          errorMsg = 'The request was cancelled or timed out. This might be due to a slow connection. Please try again.';
+        } else if (error.message.includes('getaddrinfo') || error.message.includes('EAI_AGAIN') || error.message.includes('ENOTFOUND') || error.message.includes('ECONNREFUSED')) {
+          errorMsg = 'Cannot connect to the AI service. Please check your internet connection and try again.';
+        } else {
+          errorMsg = error.message;
+        }
+      }
+      
+      console.error('❌ Full error:', error);
+      
       const errorMessage = {
         id: messages.length + 2,
         type: 'bot',
-        content: error.message || 'Sorry, I encountered an error. Please try again.',
+        content: errorMsg,
         timestamp: new Date().toISOString(),
       };
-      setChats(prev => prev.map(chat =>
-        chat.id === activeChatId
-          ? {
-              ...chat,
-              messages: [...chat.messages, errorMessage],
-              updatedAt: new Date().toISOString(),
-            }
-          : chat
-      ));
+      setMessages(prev => [...prev, errorMessage]);
     } finally {
       setIsTyping(false);
     }
   };
 
-  const createNewChat = async () => {
-    const newChat = {
-      id: Date.now(),
-      title: 'New Chat',
-      messages: [{
-        id: 1,
-        type: 'bot',
-        content: getWelcomeMessage(),
-        timestamp: new Date().toISOString(),
-      }],
-      createdAt: new Date().toISOString(),
-      updatedAt: new Date().toISOString(),
-    };
-    setChats(prev => [newChat, ...prev]);
-    setActiveChatId(newChat.id);
-    setSidebarOpen(false);
 
-    // Reset chat in main process
+  const handleApprovePlan = async () => {
+    if (!pendingPlan) return;
+
     try {
-      await window.cerebrasAPI?.resetChat();
+      setIsTyping(true);
+      
+      // Send approve message
+      const chatHistory = messages.filter(m => m.type !== 'bot' || !m.content.includes('Hello!'));
+      const result = await window.cerebrasAPI.sendMessage('APPROVE', chatHistory, selectedPlatform?.name);
+
+      if (result.success && result.data.type === 'execute') {
+        await handleExecute(result.data.executionJSON);
+      }
     } catch (error) {
-      console.error('Failed to reset chat:', error);
+      console.error('❌ Failed to approve plan:', error);
+      const errorMessage = {
+        id: messages.length + 1,
+        type: 'bot',
+        content: error.message || 'Failed to approve plan. Please try again.',
+        timestamp: new Date().toISOString(),
+      };
+      setMessages(prev => [...prev, errorMessage]);
+    } finally {
+      setIsTyping(false);
+      setPendingPlan(null);
     }
   };
 
-  const switchChat = (chatId) => {
-    setActiveChatId(chatId);
-    setSidebarOpen(false);
+  const handleEditPlan = async () => {
+    setPendingPlan(null);
+    
+    const editMessage = {
+      id: messages.length + 1,
+      type: 'user',
+      content: 'EDIT',
+      timestamp: new Date().toISOString(),
+    };
+
+      setMessages(prev => [...prev, editMessage]);
+
+    // Send edit message
+    try {
+      setIsTyping(true);
+      const chatHistory = messages.filter(m => m.type !== 'bot' || !m.content.includes('Hello!'));
+      const result = await window.cerebrasAPI.sendMessage('EDIT', chatHistory, selectedPlatform?.name);
+
+      if (result.success) {
+        const botMessage = {
+          id: messages.length + 2,
+          type: 'bot',
+          content: result.data.message || 'What would you like to change?',
+          timestamp: new Date().toISOString(),
+        };
+
+        setMessages(prev => [...prev, botMessage]);
+      }
+    } catch (error) {
+      console.error('❌ Failed to edit plan:', error);
+    } finally {
+      setIsTyping(false);
+    }
   };
 
-  const deleteChat = (chatId, e) => {
-    e.stopPropagation();
-    if (chats.length === 1) {
-      createNewChat();
-      setChats(prev => prev.filter(chat => chat.id !== chatId));
-    } else {
-      setChats(prev => prev.filter(chat => chat.id !== chatId));
-      if (activeChatId === chatId) {
-        const remainingChats = chats.filter(chat => chat.id !== chatId);
-        setActiveChatId(remainingChats[0]?.id || null);
+  const handleExecute = async (executionJSON) => {
+    setIsExecuting(true);
+    setExecutionLogs([]);
+
+    // Add execution start message
+    const executionStartMessage = {
+      id: messages.length + 1,
+      type: 'bot',
+      content: '🚀 Starting execution...',
+      timestamp: new Date().toISOString(),
+    };
+
+    setMessages(prev => [...prev, executionStartMessage]);
+
+    try {
+      const logs = [];
+      
+      // Execute each step
+      for (const step of executionJSON.steps) {
+        // Add running log
+        const runningLog = {
+          step: step.order,
+          type: step.type,
+          status: 'running',
+          message: `Step ${step.order}: ${step.description || step.action}...`,
+          timestamp: new Date().toISOString(),
+        };
+
+        logs.push(runningLog);
+        setExecutionLogs([...logs]);
+
+        try {
+          // Simulate execution delay
+          await new Promise(resolve => setTimeout(resolve, 1000));
+
+          if (step.type === 'api') {
+            try {
+              // Call backend API
+              const response = await fetch(`http://localhost:4000${step.apiConfig.endpoint}`, {
+                method: step.apiConfig.method || 'POST',
+                headers: {
+                  'Content-Type': 'application/json',
+                  'Authorization': `Bearer ${localStorage.getItem('omnis-reach-token')}`
+                },
+                body: JSON.stringify(step.parameters)
+              });
+
+              const data = await response.json();
+
+              if (response.ok && data.success) {
+                logs.push({
+                  step: step.order,
+                  type: step.type,
+                  status: 'success',
+                  message: `${step.description || step.action} completed successfully`,
+                  timestamp: new Date().toISOString(),
+                  details: data.data
+                });
+              } else {
+                throw new Error(data.error || 'API call failed');
+              }
+            } catch (apiError) {
+              // If API is not available, show mock execution
+              console.warn('⚠️ API not available, showing mock execution:', apiError.message);
+              logs.push({
+                step: step.order,
+                type: step.type,
+                status: 'success',
+                message: `${step.description || step.action} completed (mock execution - API not integrated)`,
+                timestamp: new Date().toISOString(),
+                details: { 
+                  mock: true, 
+                  message: 'This is a mock execution. API integration pending.',
+                  parameters: step.parameters 
+                }
+              });
+            }
+          } else if (step.type === 'automation') {
+            try {
+              // Call automation via IPC
+              const result = await window.automationAPI.executeTask({
+                platform: executionJSON.platform,
+                action: step.action || step.actionId,
+                parameters: step.parameters,
+                script: step.automationConfig?.script
+              });
+
+              if (result.success) {
+                logs.push({
+                  step: step.order,
+                  type: step.type,
+                  status: 'success',
+                  message: `${step.description || step.action} completed successfully`,
+                  timestamp: new Date().toISOString(),
+                  details: result.result
+                });
+              } else {
+                // Script not found or execution failed
+                throw new Error(result.error || 'Automation failed');
+              }
+            } catch (automationError) {
+              console.error('❌ Automation execution error:', automationError.message);
+              
+              // Check if error is about script not being available
+              const isScriptNotFound = automationError.message.includes('not available') || 
+                                       automationError.message.includes('not found');
+              
+              logs.push({
+                step: step.order,
+                type: step.type,
+                status: 'error',
+                message: isScriptNotFound 
+                  ? `Script not available: ${automationError.message}`
+                  : `${step.description || step.action} failed: ${automationError.message}`,
+                timestamp: new Date().toISOString(),
+                details: { 
+                  error: automationError.message,
+                  script: step.automationConfig?.script,
+                  action: step.action
+                }
+              });
+            }
+          }
+
+          setExecutionLogs([...logs]);
+        } catch (error) {
+          logs.push({
+            step: step.order,
+            type: step.type,
+            status: 'error',
+            message: `Failed: ${error.message}`,
+            timestamp: new Date().toISOString(),
+          });
+          setExecutionLogs([...logs]);
+          break; // Stop on error
+        }
       }
+
+      // Add completion message
+      const allSuccess = logs.every(log => log.status !== 'error');
+      const hasMockExecution = logs.some(log => log.details?.mock === true);
+      
+      let completionMessage = '';
+      if (hasMockExecution) {
+        completionMessage = allSuccess
+          ? '✅ Execution completed (mock mode - APIs not integrated yet). All steps would have been executed successfully.'
+          : '❌ Execution completed with errors (mock mode).';
+      } else {
+        completionMessage = allSuccess
+          ? '✅ All tasks completed successfully!'
+          : '❌ Execution completed with errors. Please check the logs.';
+      }
+
+      const completionMsg = {
+        id: messages.length + 2,
+        type: 'bot',
+        content: completionMessage,
+        timestamp: new Date().toISOString(),
+      };
+
+      // Add execution logs as a persistent message in chat
+      if (logs.length > 0) {
+        const logsMessage = {
+          id: messages.length + 3,
+          type: 'execution-logs',
+          logs: logs,
+          timestamp: new Date().toISOString(),
+        };
+
+      setMessages(prev => [...prev, logsMessage, completionMsg]);
+      } else {
+        setMessages(prev => [...prev, completionMsg]);
+      }
+
+      // Reset chatbot role to gatherer for next task
+      try {
+        await window.cerebrasAPI.resetChatbot();
+        console.log('✅ Chatbot role reset to gatherer');
+      } catch (error) {
+        console.error('❌ Failed to reset chatbot role:', error);
+      }
+    } catch (error) {
+      console.error('❌ Execution error:', error);
+      const errorMessage = {
+        id: messages.length + 2,
+        type: 'bot',
+        content: `Execution failed: ${error.message}`,
+        timestamp: new Date().toISOString(),
+      };
+
+      setMessages(prev => [...prev, errorMessage]);
+
+      // Reset chatbot role even on error
+      try {
+        await window.cerebrasAPI.resetChatbot();
+      } catch (resetError) {
+        console.error('❌ Failed to reset chatbot role:', resetError);
+      }
+    } finally {
+      setIsExecuting(false);
+      // Don't clear logs immediately - let them persist
+      setTimeout(() => setExecutionLogs([]), 5000);
     }
   };
 
@@ -230,112 +459,20 @@ const Chat = () => {
 
   return (
     <div className="flex h-full bg-base-background relative">
-      {/* Sidebar */}
-      <div
-        className={`fixed inset-y-0 left-0 z-50 bg-[var(--color-base-background-light)] border-r border-border-muted transform transition-transform duration-300 ease-in-out ${
-          sidebarOpen ? 'translate-x-0' : '-translate-x-full'
-        }`}
-        style={{ width: '320px', top: '0' }}
-      >
-        <div className="flex flex-col h-full">
-          {/* Sidebar Header */}
-          <div className="p-4 border-b border-border-muted">
-            <div className="flex items-center justify-between mb-4">
-              <h3 className="text-lg font-semibold text-text-primary">Chat History</h3>
-              <button
-                onClick={() => setSidebarOpen(false)}
-                className="p-2 hover:bg-[var(--color-base-background)] rounded-lg transition-colors"
-              >
-                <svg className="w-5 h-5 text-text-secondary" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
-                </svg>
-              </button>
-            </div>
-            <ButtonPlain variant="primary" className="w-full" onClick={createNewChat}>
-              + New Chat
-            </ButtonPlain>
-          </div>
-
-          {/* Chat List */}
-          <div className="flex-1 overflow-y-auto p-2">
-            {chats.map((chat) => (
-              <div
-                key={chat.id}
-                onClick={() => switchChat(chat.id)}
-                className={`group relative p-3 rounded-lg mb-2 cursor-pointer transition-colors ${
-                  activeChatId === chat.id
-                    ? 'bg-primary-accent text-white'
-                    : 'hover:bg-[var(--color-base-background)] text-text-primary'
-                }`}
-              >
-                <div className="flex items-start justify-between">
-                  <div className="flex-1 min-w-0">
-                    <p className={`text-sm font-medium truncate ${
-                      activeChatId === chat.id ? 'text-white' : 'text-text-primary'
-                    }`}>
-                      {chat.title}
-                    </p>
-                    <p className={`text-xs mt-1 ${
-                      activeChatId === chat.id ? 'text-white/70' : 'text-text-muted'
-                    }`}>
-                      {formatDateLocalRelative(chat.updatedAt)}
-                    </p>
-                  </div>
-                  <button
-                    onClick={(e) => deleteChat(chat.id, e)}
-                    className={`ml-2 p-1 rounded opacity-0 group-hover:opacity-100 transition-opacity ${
-                      activeChatId === chat.id
-                        ? 'hover:bg-white/20 text-white'
-                        : 'hover:bg-error/20 text-error'
-                    }`}
-                  >
-                    <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
-                    </svg>
-                  </button>
-                </div>
-              </div>
-            ))}
-          </div>
-        </div>
-      </div>
-
-      {/* Overlay */}
-      {sidebarOpen && (
-        <div
-          className="fixed inset-0 bg-black/50 z-40"
-          onClick={() => setSidebarOpen(false)}
+      {showConfetti && (
+        <Confetti
+          width={windowSize.width}
+          height={windowSize.height}
+          recycle={false}
+          numberOfPieces={500}
+          gravity={0.3}
         />
       )}
-
       {/* Main Chat Area */}
       <div className="flex flex-col flex-1 h-full">
         {/* Chat Header */}
         <div className="bg-[var(--color-base-background-light)] border-b border-border-muted px-6 py-4">
           <div className="flex items-center gap-3">
-            <button
-              onClick={() => setSidebarOpen(!sidebarOpen)}
-              className="p-2 hover:bg-[var(--color-base-background)] rounded-lg transition-colors"
-            >
-              {/* Hamburger Icon */}
-              <div className="w-6 h-6 flex flex-col justify-center gap-1.5">
-                <span
-                  className={`block h-0.5 bg-text-primary transition-all duration-300 ${
-                    sidebarOpen ? 'rotate-45 translate-y-2' : ''
-                  }`}
-                />
-                <span
-                  className={`block h-0.5 bg-text-primary transition-all duration-300 ${
-                    sidebarOpen ? 'opacity-0' : 'opacity-100'
-                  }`}
-                />
-                <span
-                  className={`block h-0.5 bg-text-primary transition-all duration-300 ${
-                    sidebarOpen ? '-rotate-45 -translate-y-2' : ''
-                  }`}
-                />
-              </div>
-            </button>
             <div className="w-10 h-10 rounded-full bg-primary-accent flex items-center justify-center">
               <span className="text-white text-lg">🤖</span>
             </div>
@@ -349,28 +486,44 @@ const Chat = () => {
         {/* Messages */}
         <div className="flex-1 overflow-y-auto p-6 space-y-4">
           {messages.map((message) => (
-            <div
-              key={message.id}
-              className={`flex ${message.type === 'user' ? 'justify-end' : 'justify-start'}`}
-            >
-              <div
-                className={`max-w-[70%] rounded-lg px-4 py-3 ${
-                  message.type === 'user'
-                    ? 'bg-primary-accent text-white'
-                    : 'bg-[var(--color-base-background-light)] text-text-primary border border-border-muted'
-                }`}
-              >
-                <p className="text-sm whitespace-pre-wrap">{message.content}</p>
-                <p
-                  className={`text-xs mt-1 ${
-                    message.type === 'user' ? 'text-white/70' : 'text-text-muted'
-                  }`}
+            <div key={message.id}>
+              {message.type === 'plan' ? (
+                <ExecutionPlanCard
+                  plan={message.plan || message.content}
+                  onApprove={handleApprovePlan}
+                  onEdit={handleEditPlan}
+                />
+              ) : message.type === 'execution-logs' ? (
+                <ExecutionLogs logs={message.logs || []} />
+              ) : (
+                <div
+                  className={`flex ${message.type === 'user' ? 'justify-end' : 'justify-start'}`}
                 >
-                  {formatTimeLocal12Hour(message.timestamp)}
-                </p>
-              </div>
+                  <div
+                    className={`max-w-[70%] rounded-lg px-4 py-3 ${
+                      message.type === 'user'
+                        ? 'bg-primary-accent text-white'
+                        : 'bg-[var(--color-base-background-light)] text-text-primary border border-border-muted'
+                    }`}
+                  >
+                    <p className="text-sm whitespace-pre-wrap">{message.content}</p>
+                    <p
+                      className={`text-xs mt-1 ${
+                        message.type === 'user' ? 'text-white/70' : 'text-text-muted'
+                      }`}
+                    >
+                      {formatTimeLocal12Hour(message.timestamp)}
+                    </p>
+                  </div>
+                </div>
+              )}
             </div>
           ))}
+
+          {/* Show execution logs if executing or if logs exist */}
+          {(isExecuting || executionLogs.length > 0) && (
+            <ExecutionLogs logs={executionLogs} />
+          )}
 
           {isTyping && (
             <div className="flex justify-start">
@@ -401,9 +554,9 @@ const Chat = () => {
                 type="text"
                 value={input}
                 onChange={(e) => setInput(e.target.value)}
-                placeholder="Type your message..."
+                placeholder={isExecuting ? "Executing tasks..." : "Type your message..."}
                 className="flex-1 bg-base-background border border-border-muted rounded-lg px-4 py-3 text-text-primary placeholder-text-muted focus:outline-none focus:ring-2 focus:ring-primary-accent focus:border-transparent transition-all"
-                disabled={isTyping}
+                disabled={isTyping || isExecuting}
               />
               <ButtonIconed
                 type="submit"
@@ -423,7 +576,7 @@ const Chat = () => {
                     />
                   </svg>
                 }
-                disabled={!input.trim() || isTyping}
+                disabled={!input.trim() || isTyping || isExecuting}
               >
                 Send
               </ButtonIconed>

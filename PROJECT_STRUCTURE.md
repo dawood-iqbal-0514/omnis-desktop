@@ -385,6 +385,370 @@ Platform connections stored in `platform_connections` table:
 
 ---
 
+## 🤖 Chatbot & Automation System
+
+The chatbot system provides an AI-powered interface for task automation with a two-role architecture (InfoGatherer and Executor) and dynamic execution planning based on platform registries.
+
+### Architecture Overview
+
+```
+User → Chat.jsx → cerebrasIPC → ChatbotService → InfoGatherer/Executor → ExecutionPlanBuilder → Automation/API
+```
+
+### Two-Role Chatbot System
+
+The chatbot operates in two distinct roles:
+
+1. **InfoGatherer Role**: Gathers information, asks clarifying questions, presents execution plan
+2. **Executor Role**: Receives approved plan, generates execution JSON, executes tasks
+
+**Role Switching:**
+- Starts in `gatherer` role
+- Switches to `executor` when plan is ready (detected via `[PLAN_READY]` marker)
+- Resets to `gatherer` after execution completes (success or error)
+
+### Folder Structure
+
+#### **Frontend Chat Components (`src/renderer/components/Chat/`)**
+
+```
+components/Chat/
+├── ExecutionPlanCard.jsx    # Displays execution plan with Approve/Edit buttons
+├── ExecutionLogs.jsx         # Real-time execution logs display
+└── index.js                  # Exports all chat components
+```
+
+**ExecutionPlanCard:**
+- Displays plan message and actions
+- Shows numbered steps with descriptions and parameters
+- Provides "Approve" and "Edit" buttons
+- Triggers confetti animation when displayed
+
+**ExecutionLogs:**
+- Shows real-time execution progress
+- Displays status icons (⏳ running, ✅ success, ❌ error)
+- Shows mock execution badges when APIs not integrated
+- Persists logs in chat history after execution
+
+#### **Chat Page (`src/renderer/pages/Chat.jsx`)**
+
+**Features:**
+- Single chat interface (no multi-chat support)
+- Platform selection modal integration
+- Confetti animation on plan readiness
+- Real-time execution logs
+- Input disabled during execution
+- Auto-reset to gatherer role after execution
+
+**State Management:**
+- `messages`: Array of chat messages
+- `pendingPlan`: Current execution plan awaiting approval
+- `isExecuting`: Disables input during execution
+- `executionLogs`: Real-time execution logs
+- `showConfetti`: Controls confetti animation
+
+**Key Methods:**
+- `handleSend()`: Processes user messages, handles plan/execute responses
+- `handleApprovePlan()`: Sends "APPROVE" to executor, triggers execution
+- `handleEditPlan()`: Sends "EDIT" to switch back to gatherer
+- `handleExecute()`: Executes plan steps (API and automation)
+
+#### **Backend Chatbot Services (`src/main/services/chatbot/`)**
+
+```
+services/chatbot/
+├── chatbotService.js         # Orchestrates two-role system
+├── roles/
+│   ├── infoGatherer.js       # InfoGatherer role implementation
+│   └── executor.js           # Executor role implementation
+└── utils/
+    ├── registryLoader.js     # Loads platform registries (API actions, automation scripts)
+    └── executionPlanBuilder.js  # Builds execution plans from actions
+```
+
+**ChatbotService (`chatbotService.js`):**
+- Manages current role (`gatherer` or `executor`)
+- Tracks `pendingPlan` between roles
+- Routes messages to appropriate role handler
+- Resets role state after execution
+
+**InfoGatherer (`roles/infoGatherer.js`):**
+- Loads platform-specific gatherer prompt
+- Dynamically injects available automation scripts into prompt
+- Processes user messages via Cerebras API
+- Detects plan readiness via `[PLAN_READY]` marker
+- Creates structured plan from conversation context if needed
+- Returns `{ type: 'plan', plan: {...} }` when ready
+
+**Executor (`roles/executor.js`):**
+- Loads platform-specific executor prompt
+- Receives approved plan from gatherer
+- Uses `ExecutionPlanBuilder` to create execution JSON
+- Returns `{ type: 'execute', executionJSON: {...} }`
+
+**RegistryLoader (`utils/registryLoader.js`):**
+- Loads and caches platform registries
+- `loadAPIActions(platformId)`: Loads `api-actions.json`
+- `loadAutomationScripts(platformId)`: Loads `automation-scripts.json`
+- `isAPIAction(platformId, actionId)`: Checks if action is API-only
+- `getAutomationScript(platformId, actionId)`: Gets automation script by actionId
+- `getHybridAction(platformId, actionId)`: Gets hybrid action config
+
+**ExecutionPlanBuilder (`utils/executionPlanBuilder.js`):**
+- `determineExecutionMethod(platformId, actionId)`: Determines if action is API, automation, or hybrid
+- `buildExecutionPlan(platformId, actions)`: Builds structured execution plan with steps
+- `validateExecutionPlan(executionPlan)`: Validates plan structure
+- Routes actions to correct execution method based on registries
+
+#### **Platform Registries (`src/automation/platforms/{platformId}/registry/`)**
+
+```
+automation/platforms/hubspot/
+├── registry/
+│   ├── api-actions.json      # API-only actions and hybrid actions
+│   └── automation-scripts.json  # Available automation scripts
+└── prompts/
+    ├── gatherer-prompt.txt   # InfoGatherer system prompt
+    └── executor-prompt.txt   # Executor system prompt
+```
+
+**api-actions.json Structure:**
+```json
+{
+  "apiOnlyActions": [
+    "create_contact",
+    "get_contact",
+    "update_contact",
+    ...
+  ],
+  "hybridActions": {
+    "create_contact_with_login": {
+      "automationFirst": true,
+      "automationScript": "hubspot_login_automation.py",
+      "thenAPI": "create_contact"
+    }
+  }
+}
+```
+
+**automation-scripts.json Structure:**
+```json
+{
+  "availableScripts": [
+    {
+      "name": "hubspot_login_automation.py",
+      "actionId": "login",
+      "description": "Login to HubSpot and establish session",
+      "required": false
+    },
+    {
+      "name": "hubspot_list_automation.py",
+      "actionId": "list_automation",
+      "description": "Perform list operations via automation",
+      "required": false
+    }
+  ]
+}
+```
+
+**gatherer-prompt.txt:**
+- Platform-specific instructions for InfoGatherer
+- Automatically injected with available automation scripts list
+- Includes examples of when to use each actionId
+- Instructs to use `[PLAN_READY]` marker when plan is complete
+
+**executor-prompt.txt:**
+- Platform-specific instructions for Executor
+- Guides JSON generation for execution plans
+- Ensures valid execution JSON structure
+
+#### **IPC Handlers (`src/main/ipc/`)**
+
+**cerebrasIPC.js:**
+- `cerebras:send-message`: Routes messages through ChatbotService
+- `cerebras:reset-chatbot`: Resets chatbot role state
+- `cerebras:reset-chat`: Resets chat history and chatbot state
+
+**automationIPC.js:**
+- `automation:execute-task`: Executes automation scripts
+- Checks script availability in registry before execution
+- Returns error if script not found in registry
+- Lazy-loads AutomationOrchestrator to prevent crashes
+
+### Execution Flow
+
+1. **User sends message** → `Chat.jsx` → `cerebrasIPC.sendMessage()`
+2. **ChatbotService routes** → `InfoGatherer.process()` (if in gatherer role)
+3. **InfoGatherer:**
+   - Loads platform-specific prompt (with injected automation scripts)
+   - Sends message to Cerebras API with system prompt
+   - Detects `[PLAN_READY]` marker in response
+   - Creates structured plan from context if needed
+   - Returns `{ type: 'plan', plan: {...} }`
+4. **Frontend displays plan** → Shows `ExecutionPlanCard` with Approve/Edit buttons
+5. **User clicks Approve** → `handleApprovePlan()` → Sends "APPROVE" to executor
+6. **ChatbotService routes** → `Executor.createExecutionJSON()` (switches to executor role)
+7. **Executor:**
+   - Uses `ExecutionPlanBuilder` to build execution JSON
+   - Determines execution method (API/automation/hybrid) for each action
+   - Returns `{ type: 'execute', executionJSON: {...} }`
+8. **Frontend executes** → `handleExecute()`:
+   - For API steps: Calls backend API
+   - For automation steps: Calls `automationIPC.executeTask()`
+   - Shows real-time logs via `ExecutionLogs` component
+   - Disables input during execution
+9. **After execution** → Resets chatbot role to `gatherer` for next task
+
+### Execution Plan Structure
+
+```javascript
+{
+  platform: "hubspot",
+  steps: [
+    {
+      order: 1,
+      type: "automation",  // or "api" or "hybrid"
+      action: "list_automation",  // or actionId
+      description: "Create list/segment: contacts who opened emails",
+      parameters: {
+        criteria: "opened emails within the last 7 days"
+      },
+      automationConfig: {
+        script: "hubspot_list_automation.py"
+      }
+    }
+  ]
+}
+```
+
+### Plan Detection Logic
+
+**InfoGatherer detects plan readiness when:**
+- AI includes `[PLAN_READY]` marker in response
+- AI presents execution plan with explicit indicators ("execution plan", "📋", "Approve", etc.)
+
+**Fallback plan creation (`createPlanFromContext`):**
+- Checks for "list" or "segment" keywords → uses `list_automation` actionId
+- Checks for "create contact" (without "list"/"segment") → uses `create_contact` actionId
+- Extracts parameters from conversation (criteria, name, email, etc.)
+- Always creates at least one action (never returns empty plan)
+
+### Execution Method Determination
+
+**ExecutionPlanBuilder determines execution method:**
+
+1. **Check hybrid actions** → If found, creates hybrid steps (automation + API)
+2. **Check API-only actions** → If found, creates API step
+3. **Check automation scripts** → If found, creates automation step
+4. **Default** → Falls back to automation with convention-based script name
+
+**Priority for hybrid tasks:**
+- If `automationFirst: true` → Automation step first, then API
+- Otherwise → API first, then automation
+
+### Automation Script Execution
+
+**Before execution:**
+- Checks if script exists in registry by script name
+- Checks if actionId exists in registry
+- Returns error with available scripts list if not found
+
+**During execution:**
+- Calls `automationIPC.executeTask()` with platform, action, parameters, script
+- Shows real-time logs with status (running, success, error)
+- Handles errors gracefully with user-friendly messages
+
+### Key Conventions & Rules
+
+1. **Always use platform registries** - Don't hardcode actionIds or script names
+2. **Dynamic prompt injection** - Automation scripts are automatically injected into gatherer prompt
+3. **Role-based prompts** - Each role has its own system prompt per platform
+4. **Plan detection** - AI must use `[PLAN_READY]` marker or explicit plan indicators
+5. **Execution method** - Always check registries to determine API vs automation
+6. **Script validation** - Always validate script exists in registry before execution
+7. **Error handling** - Show clear errors if script not available
+8. **Role reset** - Always reset to gatherer role after execution completes
+9. **Single chat** - No multi-chat support (removed)
+10. **Confetti animation** - Triggered when plan is ready (500 pieces)
+
+### Adding a New Automation Script
+
+1. **Add Python script** to `src/automation/platforms/{platformId}/`
+2. **Register in `automation-scripts.json`**:
+   ```json
+   {
+     "name": "platform_action_automation.py",
+     "actionId": "action_id",
+     "description": "Description of what the script does",
+     "required": false
+   }
+   ```
+3. **Script automatically available** - Chatbot will see it in injected prompt
+4. **Update gatherer prompt** if needed for specific instructions
+
+### Adding a New API Action
+
+1. **Add to `api-actions.json`** in `apiOnlyActions` array:
+   ```json
+   {
+     "apiOnlyActions": [
+       "new_action_id",
+       ...
+     ]
+   }
+   ```
+2. **Action automatically routed to API** - ExecutionPlanBuilder will use API method
+3. **Backend must implement** the corresponding API endpoint
+
+### Adding a New Hybrid Action
+
+1. **Add to `api-actions.json`** in `hybridActions` object:
+   ```json
+   {
+     "hybridActions": {
+       "action_name": {
+         "automationFirst": true,
+         "automationScript": "script_name.py",
+         "thenAPI": "api_action_id"
+       }
+     }
+   }
+   ```
+2. **ExecutionPlanBuilder** will create both automation and API steps
+
+### Platform-Specific Prompts
+
+**Location:** `src/automation/platforms/{platformId}/prompts/`
+
+- **gatherer-prompt.txt**: Instructions for InfoGatherer role
+  - Automatically injected with available automation scripts
+  - Should instruct AI to use `[PLAN_READY]` marker
+  - Should distinguish between API actions and automation actions
+
+- **executor-prompt.txt**: Instructions for Executor role
+  - Guides JSON generation
+  - Ensures valid execution plan structure
+
+**If prompts don't exist:** System uses default prompts (less platform-specific)
+
+### Error Handling
+
+**Network/DNS Errors:**
+- `EAI_AGAIN`, `ENOTFOUND`: "Cannot connect to the AI service. Please check your internet connection."
+- `ECONNREFUSED`, `ETIMEDOUT`: "Connection to the AI service failed. Please check your internet connection."
+
+**API Errors:**
+- `500`: "The AI service encountered an internal error. Please try again in a moment."
+- `503`: "The AI service is temporarily unavailable. Please try again in a few moments."
+- `401`: "Invalid API key. Please check your Cerebras API key."
+
+**Execution Errors:**
+- Script not found: Shows error with available scripts list
+- API not available: Shows mock execution (for development)
+- Execution failure: Shows error in execution logs
+
+---
+
 ## 🔧 Backend Structure (`src/main/`)
 
 ### Main Process
@@ -414,7 +778,7 @@ main/
 
 ```
 automation/
-├── index.js              # Automation engine entry
+├── index.js              # Automation engine entry (safely loads platforms)
 ├── core/                 # Core automation utilities
 │   ├── browserManager.js
 │   ├── errorHandler.js
@@ -423,11 +787,26 @@ automation/
 └── platforms/            # Platform-specific implementations
     ├── base/
     │   └── BasePlatform.js  # Base class (MUST extend)
-    ├── linkedin/
     ├── hubspot/
+    │   ├── hubspot_list_automation.py  # Python automation scripts
+    │   ├── hubspot_login_automation.py
+    │   ├── registry/     # Platform registries
+    │   │   ├── api-actions.json      # API-only and hybrid actions
+    │   │   └── automation-scripts.json  # Available automation scripts
+    │   └── prompts/      # Platform-specific AI prompts
+    │       ├── gatherer-prompt.txt   # InfoGatherer system prompt
+    │       └── executor-prompt.txt   # Executor system prompt
+    ├── linkedin/
     ├── notion/
     └── upwork/
 ```
+
+**Platform Folder Structure:**
+- **Python scripts**: Automation scripts (`.py` files)
+- **registry/**: JSON files defining available actions and scripts
+- **prompts/**: System prompts for chatbot roles
+
+**Note:** Platforms can have Python-only automation (no JS files). The system gracefully handles missing JS files.
 
 ---
 
@@ -788,7 +1167,7 @@ import { PlatformConnectionModal } from '../components/PlatformConnection';
   isOpen={isModalOpen}
   onClose={(hasChanges) => {
     if (hasChanges) {
-      fetchUserPlatforms(); // Refresh dashboard
+      fetchUserPlatforms(); 
     }
     setIsModalOpen(false);
   }}

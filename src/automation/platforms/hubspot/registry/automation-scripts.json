@@ -1,0 +1,22 @@
+{
+  "availableScripts": [
+    {
+      "name": "hubspot_login_automation.py",
+      "actionId": "login",
+      "description": "Login to HubSpot and establish session",
+      "required": false
+    },
+    {
+      "name": "hubspot_list_automation.py",
+      "actionId": "list_automation",
+      "description": "Perform list operations via automation",
+      "required": false
+    },
+    {
+      "name": "hubspot_list_automation_fixed.py",
+      "actionId": "list_automation_fixed",
+      "description": "Fixed version of list automation",
+      "required": false
+    }
+  ]
+}
