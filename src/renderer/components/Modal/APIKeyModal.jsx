@@ -1,6 +1,6 @@
-﻿import React, { useState } from 'react';
+import React, { useState } from 'react';
 import { ButtonPlain } from '../Button';
-import { Modal } from '../Modal';
+import Modal from './Modal';
 
 const APIKeyModal = ({ isOpen, onClose, onSave }) => {
   const [apiKey, setApiKey] = useState('');
@@ -19,9 +19,7 @@ const APIKeyModal = ({ isOpen, onClose, onSave }) => {
     setIsLoading(true);
 
     try {
-
-      localStorage.setItem('omnis-reach-api-key', apiKey.trim());
-
+      // API key is handled via environment variables, not stored in localStorage
       onSave(apiKey.trim());
 
       setApiKey('');
@@ -60,14 +58,14 @@ const APIKeyModal = ({ isOpen, onClose, onSave }) => {
             type="password"
             id="api-key"
             className="w-full px-4 py-2 rounded-lg bg-base-background border border-border-muted text-text-primary placeholder-text-muted focus:outline-none focus:ring-2 focus:ring-primary-accent focus:border-transparent transition-all"
-            placeholder="Enter your Claude API key"
+            placeholder="Enter your Cerebras API key"
             value={apiKey}
             onChange={(e) => setApiKey(e.target.value)}
             disabled={isLoading}
             required
           />
           <p className="text-text-muted text-xs mt-2">
-            Your API key is stored locally and used to access the AI assistant.
+            Your API key is configured via environment variables.
           </p>
         </div>
 

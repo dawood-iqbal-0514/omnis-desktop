@@ -1,23 +1,30 @@
 ﻿import React, { useState, useRef, useEffect } from 'react';
 import { ButtonPlain, ButtonIconed } from '../components/Button';
 import { LoaderSmall } from '../components/Loader';
-import { APIKeyModal } from '../components/APIKeyModal';
+import PlatformSelectionModal from '../components/PlatformSelectionModal';
+import usePlatformStore from '../store/platformStore';
+import { formatTimeLocal12Hour, formatDateLocalRelative } from '../utils/date';
 
 const Chat = () => {
-  const [llmReady, setLlmReady] = useState(false);
-  const [llmInitializing, setLlmInitializing] = useState(true);
-  const [apiKey, setApiKey] = useState(() => {
-    return localStorage.getItem('omnis-reach-api-key') || null;
-  });
-  const [apiKeyModalOpen, setApiKeyModalOpen] = useState(false);
+  const selectedPlatform = usePlatformStore((state) => state.selectedPlatform);
+  const setSelectedPlatform = usePlatformStore((state) => state.setSelectedPlatform);
+  const [platformModalOpen, setPlatformModalOpen] = useState(false);
   const [sidebarOpen, setSidebarOpen] = useState(false);
+  
+  const getWelcomeMessage = () => {
+    if (selectedPlatform) {
+      return `Oh great, another human. 🙄 I'm Omnis Assistant. You've selected ${selectedPlatform.name} - because clicking buttons is too hard? What do you want to automate?`;
+    }
+    return 'Oh great, another human. 🙄 I\'m Omnis Assistant. What platform are we automating today?';
+  };
+
   const [chats, setChats] = useState([{
     id: Date.now(),
     title: 'New Chat',
     messages: [{
       id: 1,
       type: 'bot',
-      content: 'Hello! I\'m your automation assistant. How can I help you today?',
+      content: 'Oh great, another human. 🙄 I\'m Omnis Assistant. What platform are we automating today?',
       timestamp: new Date().toISOString(),
     }],
     createdAt: new Date().toISOString(),
@@ -29,30 +36,9 @@ const Chat = () => {
   const messagesEndRef = useRef(null);
   const inputRef = useRef(null);
 
+
   const activeChat = chats.find(chat => chat.id === activeChatId);
   const messages = activeChat?.messages || [];
-
-  useEffect(() => {
-    initializeLLM();
-  }, []);
-
-  async function initializeLLM() {
-    try {
-      console.log('🤖 Initializing LLM...');
-      const result = await window.llmAPI.initialize();
-      if (result.success) {
-        await window.llmAPI.startChat();
-        setLlmReady(true);
-        console.log('✅ LLM ready');
-      } else {
-        console.error('❌ LLM initialization failed:', result.error);
-      }
-    } catch (error) {
-      console.error('❌ LLM error:', error);
-    } finally {
-      setLlmInitializing(false);
-    }
-  }
 
   const scrollToBottom = () => {
     messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
@@ -62,9 +48,34 @@ const Chat = () => {
     scrollToBottom();
   }, [messages, activeChatId]);
 
+  // Check if platform is selected when component mounts or when selectedPlatform changes
+  useEffect(() => {
+    if (!selectedPlatform) {
+      setPlatformModalOpen(true);
+    } else {
+      // Update welcome message when platform is selected
+      const welcomeMsg = selectedPlatform
+        ? `Oh great, another human. 🙄 I'm Omnis Assistant. You've selected ${selectedPlatform.name} - because apparently clicking buttons is too hard - What do you want me to automate?`
+        : 'Oh great, another human. 🙄 I\'m Omnis Assistant. What platform are we doing today?';
+      
+      setChats(prev => prev.map(chat =>
+        chat.id === activeChatId
+          ? {
+              ...chat,
+              messages: chat.messages.map((msg, idx) =>
+                idx === 0 && msg.type === 'bot'
+                  ? { ...msg, content: welcomeMsg }
+                  : msg
+              ),
+            }
+          : chat
+      ));
+    }
+  }, [selectedPlatform, activeChatId]);
+
   const handleSend = async (e) => {
     e.preventDefault();
-    if (!input.trim() || isTyping || !llmReady) return;
+    if (!input.trim() || isTyping) return;
 
     const userMessage = {
       id: messages.length + 1,
@@ -92,8 +103,12 @@ const Chat = () => {
     setIsTyping(true);
 
     try {
-      const result = await window.llmAPI.sendMessage(userInput);
+      // Get chat history (excluding system message)
+      const chatHistory = messages.filter(m => m.type !== 'bot' || !m.content.includes('Hello! I\'m your automation assistant'));
       
+      // Call Cerebras API with platform info
+      const result = await window.cerebrasAPI.sendMessage(userInput, chatHistory, selectedPlatform?.name);
+
       if (result.success) {
         const botMessage = {
           id: messages.length + 2,
@@ -102,7 +117,7 @@ const Chat = () => {
           timestamp: new Date().toISOString(),
         };
         
-        setChats(prev => prev.map(chat => 
+        setChats(prev => prev.map(chat =>
           chat.id === activeChatId
             ? {
                 ...chat,
@@ -112,21 +127,26 @@ const Chat = () => {
             : chat
         ));
 
+        // If requirements are complete, extract workflow
         if (result.data.isComplete) {
           console.log('🎯 Requirements complete! Extracting workflow...');
-          const workflowResult = await window.llmAPI.extractWorkflow();
-          
+          const workflowResult = await window.cerebrasAPI.extractWorkflow([
+            ...chatHistory,
+            userMessage,
+            botMessage
+          ]);
+
           if (workflowResult.success) {
             console.log('✅ Generated Workflow:', workflowResult.data);
-            
+
             const workflowMessage = {
               id: messages.length + 3,
               type: 'bot',
               content: '✨ I\'ve generated your workflow! Check the console for details.',
               timestamp: new Date().toISOString(),
             };
-            
-            setChats(prev => prev.map(chat => 
+
+            setChats(prev => prev.map(chat =>
               chat.id === activeChatId
                 ? {
                     ...chat,
@@ -137,16 +157,18 @@ const Chat = () => {
             ));
           }
         }
+      } else {
+        throw new Error(result.error || 'Failed to get response from Cerebras API');
       }
     } catch (error) {
       console.error('❌ Chat error:', error);
       const errorMessage = {
         id: messages.length + 2,
         type: 'bot',
-        content: 'Sorry, I encountered an error. Please try again.',
+        content: error.message || 'Sorry, I encountered an error. Please try again.',
         timestamp: new Date().toISOString(),
       };
-      setChats(prev => prev.map(chat => 
+      setChats(prev => prev.map(chat =>
         chat.id === activeChatId
           ? {
               ...chat,
@@ -167,7 +189,7 @@ const Chat = () => {
       messages: [{
         id: 1,
         type: 'bot',
-        content: 'Hello! I\'m your automation assistant. How can I help you today?',
+        content: getWelcomeMessage(),
         timestamp: new Date().toISOString(),
       }],
       createdAt: new Date().toISOString(),
@@ -176,9 +198,13 @@ const Chat = () => {
     setChats(prev => [newChat, ...prev]);
     setActiveChatId(newChat.id);
     setSidebarOpen(false);
-    
-    await window.llmAPI.reset();
-    await window.llmAPI.startChat();
+
+    // Reset chat in main process
+    try {
+      await window.cerebrasAPI?.resetChat();
+    } catch (error) {
+      console.error('Failed to reset chat:', error);
+    }
   };
 
   const switchChat = (chatId) => {
@@ -189,53 +215,22 @@ const Chat = () => {
   const deleteChat = (chatId, e) => {
     e.stopPropagation();
     if (chats.length === 1) {
-
       createNewChat();
       setChats(prev => prev.filter(chat => chat.id !== chatId));
     } else {
       setChats(prev => prev.filter(chat => chat.id !== chatId));
       if (activeChatId === chatId) {
-
         const remainingChats = chats.filter(chat => chat.id !== chatId);
         setActiveChatId(remainingChats[0]?.id || null);
       }
     }
   };
 
-  const formatTime = (dateString) => {
-    const date = new Date(dateString);
-    return new Intl.DateTimeFormat('en-US', {
-      hour: '2-digit',
-      minute: '2-digit',
-    }).format(date);
-  };
 
-  const formatDate = (dateString) => {
-    const date = new Date(dateString);
-    const today = new Date();
-    const yesterday = new Date(today);
-    yesterday.setDate(yesterday.getDate() - 1);
-
-    if (date.toDateString() === today.toDateString()) {
-      return 'Today';
-    } else if (date.toDateString() === yesterday.toDateString()) {
-      return 'Yesterday';
-    } else {
-      return new Intl.DateTimeFormat('en-US', {
-        month: 'short',
-        day: 'numeric',
-      }).format(date);
-    }
-  };
-
-  const handleApiKeySave = (key) => {
-    setApiKey(key);
-    setApiKeyModalOpen(false);
-  };
 
   return (
     <div className="flex h-full bg-base-background relative">
-      {}
+      {/* Sidebar */}
       <div
         className={`fixed inset-y-0 left-0 z-50 bg-[var(--color-base-background-light)] border-r border-border-muted transform transition-transform duration-300 ease-in-out ${
           sidebarOpen ? 'translate-x-0' : '-translate-x-full'
@@ -243,7 +238,7 @@ const Chat = () => {
         style={{ width: '320px', top: '0' }}
       >
         <div className="flex flex-col h-full">
-          {}
+          {/* Sidebar Header */}
           <div className="p-4 border-b border-border-muted">
             <div className="flex items-center justify-between mb-4">
               <h3 className="text-lg font-semibold text-text-primary">Chat History</h3>
@@ -261,7 +256,7 @@ const Chat = () => {
             </ButtonPlain>
           </div>
 
-          {}
+          {/* Chat List */}
           <div className="flex-1 overflow-y-auto p-2">
             {chats.map((chat) => (
               <div
@@ -283,7 +278,7 @@ const Chat = () => {
                     <p className={`text-xs mt-1 ${
                       activeChatId === chat.id ? 'text-white/70' : 'text-text-muted'
                     }`}>
-                      {formatDate(chat.updatedAt)}
+                      {formatDateLocalRelative(chat.updatedAt)}
                     </p>
                   </div>
                   <button
@@ -305,7 +300,7 @@ const Chat = () => {
         </div>
       </div>
 
-      {}
+      {/* Overlay */}
       {sidebarOpen && (
         <div
           className="fixed inset-0 bg-black/50 z-40"
@@ -313,16 +308,16 @@ const Chat = () => {
         />
       )}
 
-      {}
+      {/* Main Chat Area */}
       <div className="flex flex-col flex-1 h-full">
-        {}
+        {/* Chat Header */}
         <div className="bg-[var(--color-base-background-light)] border-b border-border-muted px-6 py-4">
           <div className="flex items-center gap-3">
             <button
               onClick={() => setSidebarOpen(!sidebarOpen)}
               className="p-2 hover:bg-[var(--color-base-background)] rounded-lg transition-colors"
             >
-              {}
+              {/* Hamburger Icon */}
               <div className="w-6 h-6 flex flex-col justify-center gap-1.5">
                 <span
                   className={`block h-0.5 bg-text-primary transition-all duration-300 ${
@@ -345,34 +340,15 @@ const Chat = () => {
               <span className="text-white text-lg">🤖</span>
             </div>
             <div>
-            <h2 className="text-lg font-semibold text-text-primary">Omnis Assistant</h2>
-            <p className="text-sm text-text-secondary">AI-powered task automation</p>
+              <h2 className="text-lg font-semibold text-text-primary">Omnis Assistant</h2>
+              <p className="text-sm text-text-secondary">AI-powered task automation</p>
             </div>
           </div>
         </div>
 
-        {}
+        {/* Messages */}
         <div className="flex-1 overflow-y-auto p-6 space-y-4">
-          {llmInitializing && (
-            <div className="flex items-center justify-center h-full">
-              <div className="text-center">
-                <LoaderSmall className="mx-auto mb-4" />
-                <p className="text-text-primary font-medium">Loading AI Model...</p>
-                <p className="text-text-muted text-sm mt-2">This may take a few seconds</p>
-              </div>
-            </div>
-          )}
-
-          {!llmInitializing && !llmReady && (
-            <div className="flex items-center justify-center h-full">
-              <div className="text-center text-error">
-                <p className="font-medium">Failed to load AI model</p>
-                <p className="text-sm mt-2">Please check console for details</p>
-              </div>
-            </div>
-          )}
-
-          {llmReady && messages.map((message) => (
+          {messages.map((message) => (
             <div
               key={message.id}
               className={`flex ${message.type === 'user' ? 'justify-end' : 'justify-start'}`}
@@ -390,7 +366,7 @@ const Chat = () => {
                     message.type === 'user' ? 'text-white/70' : 'text-text-muted'
                   }`}
                 >
-                  {formatTime(message.timestamp)}
+                  {formatTimeLocal12Hour(message.timestamp)}
                 </p>
               </div>
             </div>
@@ -407,15 +383,15 @@ const Chat = () => {
           <div ref={messagesEndRef} />
         </div>
 
-        {}
+        {/* Input Area */}
         <div className="bg-[var(--color-base-background-light)] border-t border-border-muted p-4">
-          {!apiKey ? (
+          {!selectedPlatform ? (
             <div className="flex items-center gap-3">
               <div className="flex-1 bg-base-background border border-border-muted rounded-lg px-4 py-3 text-text-muted cursor-not-allowed">
-                API key required to start chatting
+                Please select a platform to start chatting
               </div>
-              <ButtonPlain variant="primary" onClick={() => setApiKeyModalOpen(true)}>
-                Enter API Key
+              <ButtonPlain variant="primary" onClick={() => setPlatformModalOpen(true)}>
+                Select Platform
               </ButtonPlain>
             </div>
           ) : (
@@ -456,11 +432,16 @@ const Chat = () => {
         </div>
       </div>
 
-      {}
-      <APIKeyModal
-        isOpen={apiKeyModalOpen}
-        onClose={() => setApiKeyModalOpen(false)}
-        onSave={handleApiKeySave}
+      {/* Platform Selection Modal */}
+      <PlatformSelectionModal
+        isOpen={platformModalOpen}
+        onClose={() => {
+          setPlatformModalOpen(false);
+        }}
+        onSelect={(platform) => {
+          setSelectedPlatform(platform);
+          setPlatformModalOpen(false);
+        }}
       />
     </div>
   );

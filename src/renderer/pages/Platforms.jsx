@@ -1,100 +1,45 @@
 ﻿import React, { useState } from 'react';
 import { ButtonPlain } from '../components/Button';
 import { Tooltip } from '../components/Tooltip';
-import { LinkedInConnection } from '../components/PlatformConnection';
-import linkedinLogo from '@assets/logos/linkedin.png';
-import hubspotLogo from '@assets/logos/hubspot.png';
-import ghlLogo from '@assets/logos/ghl.svg';
-import apolloLogo from '@assets/logos/apollo.png';
-import clayLogo from '@assets/logos/clay.png';
-import upworkLogo from '@assets/logos/upwork.png';
-import activecampaignLogo from '@assets/logos/AC.png';
-import n8nLogo from '@assets/logos/n8n.png';
-import makeLogo from '@assets/logos/make.png';
-import notionLogo from '@assets/logos/notion.png';
-import smartleadLogo from '@assets/logos/smartlead.png';
-import slackLogo from '@assets/logos/slack.png';
-import instantlyLogo from '@assets/logos/instantly.png';
+import { LinkedInConnection, PlatformConnectionModal } from '../components/PlatformConnection';
+import usePlatformStore from '../store/platformStore';
+import { getAllPlatforms, isPlatformEnabled } from '../config/platforms.config';
 
 const Platforms = () => {
   const [linkedinModalOpen, setLinkedinModalOpen] = useState(false);
-  const [connectedPlatforms, setConnectedPlatforms] = useState([]);
+  const [connectionModalOpen, setConnectionModalOpen] = useState(false);
+  const [selectedPlatform, setSelectedPlatform] = useState(null);
   const [searchQuery, setSearchQuery] = useState('');
 
-  const platforms = [
-    { 
-      name: 'LinkedIn', 
-      logo: linkedinLogo,
-      comingSoon: false,
-    },
-    { 
-      name: 'HubSpot', 
-      logo: hubspotLogo,
-      comingSoon: true,
-    },
-    { 
-      name: 'GHL (GoHighLevel)', 
-      logo: ghlLogo,
-      comingSoon: true,
-    },
-    { 
-      name: 'Apollo', 
-      logo: apolloLogo,
-      comingSoon: true,
-    },
-    { 
-      name: 'Clay', 
-      logo: clayLogo,
-      comingSoon: true,
-    },
-    { 
-      name: 'Upwork', 
-      logo: upworkLogo,
-      comingSoon: true,
-    },
-    { 
-      name: 'ActiveCampaign', 
-      logo: activecampaignLogo,
-      comingSoon: true,
-    },
-    { 
-      name: 'n8n', 
-      logo: n8nLogo,
-      comingSoon: true,
-    },
-    { 
-      name: 'Make.com', 
-      logo: makeLogo,
-      comingSoon: true,
-    },
-    { 
-      name: 'Notion', 
-      logo: notionLogo,
-      comingSoon: true,
-    },
-    { 
-      name: 'Smartlead', 
-      logo: smartleadLogo,
-      comingSoon: true,
-    },
-    { 
-      name: 'Slack', 
-      logo: slackLogo,
-      comingSoon: true,
-    },
-    { 
-      name: 'Instantly', 
-      logo: instantlyLogo,
-      comingSoon: true,
-    },
-  ];
+  const {
+    isPlatformConnected,
+  } = usePlatformStore();
+
+  // Get all platforms and mark them as comingSoon if not enabled in config
+  const platforms = getAllPlatforms().map((platform) => ({
+    ...platform,
+    comingSoon: !isPlatformEnabled(platform.id),
+  }));
 
   const handleLinkedInSuccess = (data) => {
-    setConnectedPlatforms((prev) => [...prev, data]);
+    // LinkedIn handled separately for now
   };
 
-  const isPlatformConnected = (platformName) => {
-    return connectedPlatforms.some((p) => p.platform === platformName.toLowerCase());
+  const handlePlatformClick = (platform) => {
+    if (platform.comingSoon) return;
+    
+    // LinkedIn uses separate modal for now
+    if (platform.id === 'linkedin') {
+      setLinkedinModalOpen(true);
+    } else {
+      setSelectedPlatform(platform);
+      setConnectionModalOpen(true);
+    }
+  };
+
+  const handleModalClose = () => {
+    setConnectionModalOpen(false);
+    setSelectedPlatform(null);
   };
 
   const filteredPlatforms = platforms.filter((platform) =>
@@ -168,13 +113,9 @@ const Platforms = () => {
                   variant="primary"
                   className="w-full"
                   disabled={platform.comingSoon}
-                  onClick={() => {
-                    if (platform.name === 'LinkedIn' && !platform.comingSoon) {
-                      setLinkedinModalOpen(true);
-                    }
-                  }}
+                  onClick={() => handlePlatformClick(platform)}
                 >
-                  {isPlatformConnected(platform.name) ? 'Connected' : 'Connect'}
+                  {isPlatformConnected(platform.id) ? 'Connected' : 'Connect'}
                 </ButtonPlain>
               </div>
             </Tooltip>
@@ -193,6 +134,14 @@ const Platforms = () => {
         onClose={() => setLinkedinModalOpen(false)}
         onSuccess={handleLinkedInSuccess}
       />
+      
+      {selectedPlatform && (
+        <PlatformConnectionModal
+          isOpen={connectionModalOpen}
+          onClose={handleModalClose}
+          platformName={selectedPlatform.name}
+        />
+      )}
     </div>
   );
 };

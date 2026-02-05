@@ -1,39 +1,50 @@
-﻿import React, { useState } from 'react';
+﻿import React, { useState, useEffect } from 'react';
+import { Formik, Form } from 'formik';
 import { ButtonPlain } from '../components/Button';
+import { FormField } from '../components/Form';
+import useAuthStore from '../store/authStore';
+import useToast from '../hooks/useToast';
+import { forgotPasswordSchema, initialValues } from '../schemas/auth.schemas';
 import logo from '@assets/logos/logo.png';
 
-const ForgotPassword = ({ onBack, onOTPSent }) => {
-  const [email, setEmail] = useState('');
-  const [error, setError] = useState('');
-  const [isLoading, setIsLoading] = useState(false);
+const ForgotPassword = ({ onBack, onOTPSent, onRedirectToDashboard }) => {
   const [success, setSuccess] = useState(false);
+  const [email, setEmail] = useState('');
+  const isAuthenticated = useAuthStore((state) => state.isAuthenticated);
+  const sendPasswordResetOTP = useAuthStore((state) => state.sendPasswordResetOTP);
+  const { showSuccess, showError } = useToast();
 
-  const handleSubmit = async (e) => {
-    e.preventDefault();
-    setError('');
-    setSuccess(false);
-
-    if (!email) {
-      setError('Please enter your email address.');
-      return;
+  // Redirect to dashboard if already authenticated
+  useEffect(() => {
+    const token = localStorage.getItem('omnis-reach-token');
+    if (token && isAuthenticated && onRedirectToDashboard) {
+      onRedirectToDashboard();
     }
+  }, [isAuthenticated, onRedirectToDashboard]);
 
-    const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
-    if (!emailRegex.test(email)) {
-      setError('Please enter a valid email address.');
-      return;
+  const handleSubmit = async (values, { setSubmitting, resetForm }) => {
+    try {
+      setSuccess(false);
+      setEmail(values.email);
+
+      const response = await sendPasswordResetOTP(values.email);
+
+      if (response.success) {
+        setSuccess(true);
+        showSuccess('OTP sent to your email!');
+
+        setTimeout(() => {
+          onOTPSent(values.email);
+          resetForm();
+        }, 1500);
+      } else {
+        showError(response.error || 'Failed to send OTP');
+      }
+    } catch (err) {
+      showError(err.message || 'Failed to send OTP. Please try again.');
+    } finally {
+      setSubmitting(false);
     }
-
-    setIsLoading(true);
-
-    setTimeout(() => {
-      setIsLoading(false);
-      setSuccess(true);
-
-      setTimeout(() => {
-        onOTPSent(email);
-      }, 1500);
-    }, 2000);
   };
 
   return (
@@ -60,33 +71,32 @@ const ForgotPassword = ({ onBack, onOTPSent }) => {
             </p>
           </div>
         ) : (
-          <form onSubmit={handleSubmit} className="space-y-4">
-            <div>
-              <label className="block text-text-secondary text-sm font-medium mb-1" htmlFor="email">
-                Email Address
-              </label>
-              <input
-                type="email"
-                id="email"
-                className="w-full px-4 py-2 rounded-lg bg-base-background border border-border-muted text-text-primary focus:outline-none focus:ring-2 focus:ring-primary-accent"
-                placeholder="your@example.com"
-                value={email}
-                onChange={(e) => setEmail(e.target.value)}
-                disabled={isLoading}
-              />
-            </div>
-            {error && <p className="text-error text-sm text-center">{error}</p>}
-            <ButtonPlain type="submit" variant="primary" className="w-full" isLoading={isLoading}>
-              Send OTP
-            </ButtonPlain>
-          </form>
+          <Formik
+            initialValues={initialValues.forgotPassword}
+            validationSchema={forgotPasswordSchema}
+            onSubmit={handleSubmit}
+          >
+            {({ isSubmitting, values }) => (
+              <Form className="space-y-4">
+                <FormField
+                  name="email"
+                  type="email"
+                  label="Email Address"
+                  placeholder="your@example.com"
+                  required
+                />
+                <ButtonPlain type="submit" variant="primary" className="w-full" isLoading={isSubmitting}>
+                  Send OTP
+                </ButtonPlain>
+              </Form>
+            )}
+          </Formik>
         )}
 
         <div className="mt-6 text-center">
           <button
             onClick={onBack}
             className="text-text-secondary text-sm hover:text-primary-accent transition-colors focus:outline-none"
-            disabled={isLoading}
           >
             ← Back to Sign In
           </button>
@@ -97,4 +107,3 @@ const ForgotPassword = ({ onBack, onOTPSent }) => {
 };
 
 export default ForgotPassword;
-

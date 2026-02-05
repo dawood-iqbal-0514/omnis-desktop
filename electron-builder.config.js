@@ -8,25 +8,9 @@ module.exports = {
   files: [
     'dist/**/*',
     'package.json',
-    'src/llm/**/*.js',
     'node_modules/**/*',
   ],
   asar: true,
-  asarUnpack: [
-    'node_modules/@node-llama-cpp/**/*',
-  ],
-  extraResources: [
-    {
-      from: 'src/llm/models',
-      to: 'llm/models',
-      filter: ['**/*.gguf'],
-    },
-    {
-      from: 'src/llm/grammars',
-      to: 'llm/grammars',
-      filter: ['**/*'],
-    },
-  ],
   electronDownload: {
     mirror: 'https://github.com/electron/electron/releases/download/v'
   },

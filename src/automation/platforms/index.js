@@ -1,16 +1,25 @@
 ﻿
-const { LinkedInPlatform } = require('./linkedin');
-const { NotionPlatform } = require('./notion');
-const { HubSpotPlatform } = require('./hubspot');
-const { UpworkPlatform } = require('./upwork');
+function loadPlatform(platformId, platformPath) {
+  try {
+    const module = require(platformPath);
+    const PlatformClass = Object.values(module).find(v => v && typeof v === 'function' && v.name?.endsWith('Platform')) || module.default;
+    
+    if (!PlatformClass || typeof PlatformClass !== 'function') return null;
+    
+    return new PlatformClass();
+  } catch (error) {
+    // Platform may have Python files only - this is expected
+    return null;
+  }
+}
 
-const platforms = {
-  linkedin: new LinkedInPlatform(),
-  notion: new NotionPlatform(),
-  hubspot: new HubSpotPlatform(),
-  upwork: new UpworkPlatform(),
+const platforms = {};
+const platformList = ['linkedin', 'notion', 'hubspot', 'upwork'];
 
-};
+platformList.forEach(id => {
+  const platform = loadPlatform(id, `./${id}`);
+  if (platform) platforms[id] = platform;
+});
 
 function getPlatform(platformId) {
   return platforms[platformId] || null;
