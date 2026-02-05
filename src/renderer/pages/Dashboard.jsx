@@ -1,103 +1,67 @@
-﻿import React, { useState } from 'react';
+﻿import React, { useState, useEffect } from 'react';
 import { Tooltip } from '../components/Tooltip';
+import { LoaderLarge } from '../components/Loader';
+import { PlatformConnectionModal } from '../components/PlatformConnection';
 import usePlatformStore from '../store/platformStore';
 import useAuthStore from '../store/authStore';
-import hubspotLogo from '@assets/logos/hubspot.png';
-import linkedinLogo from '@assets/logos/linkedin.png';
-import ghlLogo from '@assets/logos/ghl.svg';
-import apolloLogo from '@assets/logos/apollo.png';
-import clayLogo from '@assets/logos/clay.png';
-import upworkLogo from '@assets/logos/upwork.png';
-import activecampaignLogo from '@assets/logos/AC.png';
-import n8nLogo from '@assets/logos/n8n.png';
-import makeLogo from '@assets/logos/make.png';
-import notionLogo from '@assets/logos/notion.png';
-import smartleadLogo from '@assets/logos/smartlead.png';
-import slackLogo from '@assets/logos/slack.png';
-import instantlyLogo from '@assets/logos/instantly.png';
+import { getAllPlatforms, isPlatformEnabled } from '../config/platforms.config';
 
 const Dashboard = ({ setActivePage }) => {
   const setSelectedPlatform = usePlatformStore((state) => state.setSelectedPlatform);
-  const [connectedPlatforms] = useState([]);
+  const { fetchUserPlatforms, isPlatformConnected, loading } = usePlatformStore();
+  const [connectionModalOpen, setConnectionModalOpen] = useState(false);
+  const [selectedPlatform, setSelectedPlatformState] = useState(null);
   const user = useAuthStore((state) => state.user);
+  
+  // Fetch user platforms on mount
+  useEffect(() => {
+    fetchUserPlatforms();
+  }, [fetchUserPlatforms]);
   
   // Get first name from user's name
   const firstName = user?.name?.split(' ')[0] || user?.email?.split('@')[0] || 'User';
 
-  const platforms = [
-    {
-      name: 'HubSpot',
-      logo: hubspotLogo,
-      comingSoon: false,
-    },
-    {
-      name: 'LinkedIn',
-      logo: linkedinLogo,
-      comingSoon: true,
-    },
-    {
-      name: 'GHL (GoHighLevel)',
-      logo: ghlLogo,
-      comingSoon: true,
-    },
-    {
-      name: 'Apollo',
-      logo: apolloLogo,
-      comingSoon: true,
-    },
-    {
-      name: 'Clay',
-      logo: clayLogo,
-      comingSoon: true,
-    },
-    {
-      name: 'Upwork',
-      logo: upworkLogo,
-      comingSoon: true,
-    },
-    {
-      name: 'ActiveCampaign',
-      logo: activecampaignLogo,
-      comingSoon: true,
-    },
-    {
-      name: 'n8n',
-      logo: n8nLogo,
-      comingSoon: true,
-    },
-    {
-      name: 'Make.com',
-      logo: makeLogo,
-      comingSoon: true,
-    },
-    {
-      name: 'Notion',
-      logo: notionLogo,
-      comingSoon: true,
-    },
-    {
-      name: 'Smartlead',
-      logo: smartleadLogo,
-      comingSoon: true,
-    },
-    {
-      name: 'Slack',
-      logo: slackLogo,
-      comingSoon: true,
-    },
-    {
-      name: 'Instantly',
-      logo: instantlyLogo,
-      comingSoon: true,
-    },
-  ];
+  // Get all platforms and mark them as comingSoon if not enabled in config
+  const platforms = getAllPlatforms().map((platform) => ({
+    ...platform,
+    comingSoon: !isPlatformEnabled(platform.id),
+  }));
 
-  const handlePlatformClick = (platform) => {
-    if (!platform.comingSoon) {
+  const handleCardClick = (platform) => {
+    if (platform.comingSoon) return;
+    // Card click always opens modal
+    setSelectedPlatformState(platform);
+    setConnectionModalOpen(true);
+  };
+
+  const handleButtonClick = (platform, e) => {
+    e.stopPropagation();
+    if (platform.comingSoon) return;
+    
+    if (isPlatformConnected(platform.id)) {
+      // If connected, navigate to chat
       setSelectedPlatform(platform);
       setActivePage('chat');
+    } else {
+      // If not connected, open connection modal
+      setSelectedPlatformState(platform);
+      setConnectionModalOpen(true);
     }
   };
+
+  const handleModalClose = (hasChanges = false) => {
+    setConnectionModalOpen(false);
+    setSelectedPlatformState(null);
+    // Only refresh dashboard if changes were made in the modal
+    if (hasChanges) {
+      fetchUserPlatforms();
+    }
+  };
+
+  // Show large spinner while loading
+  if (loading) {
+    return <LoaderLarge />;
+  }
 
   return (
     <div className="p-8">
@@ -109,7 +73,9 @@ const Dashboard = ({ setActivePage }) => {
       <div className="mb-8">
         <div className="bg-[var(--color-base-background-light)] rounded-lg p-6 border border-border-muted">
           <h3 className="text-text-secondary text-sm mb-2">Connected Platforms</h3>
-          <p className="text-3xl font-bold text-primary-accent">{connectedPlatforms.length}</p>
+          <p className="text-3xl font-bold text-primary-accent">
+            {platforms.filter((p) => isPlatformConnected(p.id)).length}
+          </p>
         </div>
       </div>
 
@@ -121,7 +87,7 @@ const Dashboard = ({ setActivePage }) => {
         {platforms.map((platform) => (
           <div
             key={platform.name}
-            onClick={() => handlePlatformClick(platform)}
+            onClick={() => handleCardClick(platform)}
             className={`bg-[var(--color-base-background-light)] rounded-lg p-6 border border-border-muted transition-colors ${
               platform.comingSoon
                 ? 'cursor-not-allowed opacity-75'
@@ -145,7 +111,7 @@ const Dashboard = ({ setActivePage }) => {
               disabled={!platform.comingSoon}
               className="w-full"
             >
-              <div className="w-full">
+              <div className="w-full" onClick={(e) => e.stopPropagation()}>
                 <button
                   className={`w-full px-4 py-2 rounded-lg font-medium transition-colors ${
                     platform.comingSoon
@@ -153,14 +119,27 @@ const Dashboard = ({ setActivePage }) => {
                       : 'bg-primary-accent text-white hover:bg-primary-accent/90'
                   }`}
                   disabled={platform.comingSoon}
+                  onClick={(e) => handleButtonClick(platform, e)}
                 >
-                  {platform.comingSoon ? 'Coming Soon' : 'Select Platform'}
+                  {platform.comingSoon
+                    ? 'Coming Soon'
+                    : isPlatformConnected(platform.id)
+                    ? 'Work'
+                    : 'Connect'}
                 </button>
               </div>
             </Tooltip>
           </div>
         ))}
       </div>
+
+      {selectedPlatform && (
+        <PlatformConnectionModal
+          isOpen={connectionModalOpen}
+          onClose={handleModalClose}
+          platformName={selectedPlatform.name}
+        />
+      )}
     </div>
   );
 };

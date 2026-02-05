@@ -1,7 +1,7 @@
 ﻿import React, { useEffect } from 'react';
 import useThemeStore from '../../store/themeStore';
 
-const Modal = ({ isOpen, onClose, children, title, size = 'md' }) => {
+const Modal = ({ isOpen, onClose, children, title, size = 'md', closeOnOutsideClick = true, closeOnEscape = true }) => {
   const theme = useThemeStore((state) => state.theme);
   const isDark = theme === 'dark';
 
@@ -17,6 +17,7 @@ const Modal = ({ isOpen, onClose, children, title, size = 'md' }) => {
   }, [isOpen]);
 
   useEffect(() => {
+    if (!closeOnEscape) return;
     const handleEscape = (e) => {
       if (e.key === 'Escape' && isOpen) {
         onClose();
@@ -24,7 +25,7 @@ const Modal = ({ isOpen, onClose, children, title, size = 'md' }) => {
     };
     document.addEventListener('keydown', handleEscape);
     return () => document.removeEventListener('keydown', handleEscape);
-  }, [isOpen, onClose]);
+  }, [isOpen, onClose, closeOnEscape]);
 
   if (!isOpen) return null;
 
@@ -42,7 +43,7 @@ const Modal = ({ isOpen, onClose, children, title, size = 'md' }) => {
       {/* Backdrop */}
       <div
         className="absolute inset-0 bg-black/50 backdrop-blur-sm transition-opacity"
-        onClick={onClose}
+        onClick={closeOnOutsideClick ? onClose : undefined}
       />
 
       {/* Modal Content */}

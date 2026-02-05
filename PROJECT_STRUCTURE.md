@@ -52,16 +52,20 @@ components/
 │   ├── Sidebar.jsx       # Main sidebar navigation
 │   └── index.js
 ├── Loader/                # Loading indicators
-│   ├── LoaderSmall.jsx
-│   ├── LoaderMedium.jsx
+│   ├── LoaderSmall.jsx    # Small spinner for inline use
+│   ├── LoaderMedium.jsx   # Medium spinner for modals (centered)
+│   ├── LoaderLarge.jsx    # Large spinner for pages (centered)
+│   ├── InputSpinner.jsx   # Small spinner for input fields
 │   └── index.js
 ├── Modal/                 # Modal dialogs
-│   ├── Modal.jsx         # Base modal component
+│   ├── Modal.jsx         # Base modal component (supports closeOnOutsideClick, closeOnEscape)
 │   ├── APIKeyModal.jsx
 │   └── index.js
 ├── Dropdown/              # Dropdown/select components
 ├── Tooltip/               # Tooltip components
-├── PlatformConnection/   # Platform-specific connection components
+├── PlatformConnection/    # Platform connection components
+│   ├── PlatformConnectionModal.jsx  # Dynamic modal for platform setup
+│   └── index.js
 └── index.js               # Export all components
 ```
 
@@ -132,12 +136,19 @@ store/
 ├── authStore.js          # Authentication state
 ├── themeStore.js         # Theme (light/dark) state
 └── platformStore.js      # Platform connections state
+    ├── connections       # Array of user's platform connections
+    ├── fetchUserPlatforms()  # Fetch all platforms for user (dashboard)
+    ├── getPlatformConnection()  # Get connection for specific platform
+    ├── saveConnection()  # Save/update platform credentials
+    ├── updateConnectionStatus()  # Update isConnected/isFirstTimeLogin flags
+    └── disconnectPlatform()  # Remove credentials and reset statuses
 ```
 
 **Store Conventions:**
 - Use Zustand for state management
 - One store per domain (auth, theme, platform, etc.)
 - Export store as default
+- Stores handle ALL API calls for their domain
 
 #### **`/services/`** - API Services (Internal Use Only)
 ```
@@ -145,7 +156,12 @@ services/
 └── api.js                # API service layer (ONLY used by stores)
     ├── ApiService        # Base API class
     ├── authAPI           # Authentication endpoints
-    └── emailVerificationAPI  # Email verification endpoints
+    ├── emailVerificationAPI  # Email verification endpoints
+    └── platformAPI       # Platform connection endpoints
+        ├── getUserPlatforms(platformId?)  # Get all platforms or specific platform
+        ├── saveConnection(platform, credentials)  # Save/update credentials
+        ├── updateConnectionStatus(platform, status)  # Update connection flags
+        └── disconnectPlatform(platform)  # Remove credentials and reset statuses
 ```
 
 **Service Conventions:**
@@ -153,19 +169,26 @@ services/
 - ⚠️ **Components should NEVER import from `/services/api.js`**
 - Centralize all API calls in services
 - Use the base `ApiService` class
-- Group related endpoints (authAPI, emailVerificationAPI, etc.)
+- Group related endpoints (authAPI, emailVerificationAPI, platformAPI, etc.)
 - Services are low-level utilities used by stores
 
 #### **`/config/`** - Configuration Files
 ```
 config/
-└── toaster.config.js     # Toast notification configuration
+├── toaster.config.js     # Toast notification configuration
+└── platforms.config.js   # Platform configuration (setup types, fields, enabled status)
+    ├── platformsConfig   # Platform details (name, logo, setupType, steps, fields, buttons)
+    ├── platformStatusList  # Enabled/disabled status for each platform
+    ├── getAllPlatforms()  # Get all platforms with enabled status
+    ├── getPlatformConfig()  # Get config for specific platform
+    └── isPlatformEnabled()  # Check if platform is enabled
 ```
 
 **Config Conventions:**
 - Keep configuration separate from components
 - Export configuration objects
 - Use theme variables in configs
+- Platform config defines setup requirements (API key, OAuth, automation scripts)
 
 #### **`/styles/`** - Stylesheets
 ```
@@ -206,6 +229,159 @@ utils/
 middleware/
 └── authGuard.js          # Route protection middleware
 ```
+
+---
+
+## 🔌 Platform Connection System
+
+The platform connection system manages user connections to various platforms (HubSpot, LinkedIn, etc.) with flexible authentication methods.
+
+### Architecture Overview
+
+```
+Dashboard → PlatformConnectionModal → platformStore → platformAPI → Backend API
+```
+
+### Key Components
+
+#### **1. Platform Configuration (`/config/platforms.config.js`)**
+
+Centralized configuration for all platforms:
+- **`platformsConfig`**: Defines setup requirements for each platform
+  - `setupType`: 'apiKey', 'oauth', 'automation', or 'hybrid'
+  - `steps`: Array of setup steps (API key, OAuth, automation script)
+  - `fields`: Form fields for credential input
+  - `buttons`: Button configurations
+- **`platformStatusList`**: Controls which platforms are enabled on dashboard
+- **Helper functions**: `getAllPlatforms()`, `getPlatformConfig()`, `isPlatformEnabled()`
+
+**Example:**
+```javascript
+hubspot: {
+  name: 'HubSpot',
+  setupType: 'hybrid',
+  steps: [
+    { type: 'apiKey', required: true, field: 'apiKey' },
+    { type: 'automation', required: true, trigger: 'login' }
+  ],
+  fields: [
+    { name: 'apiKey', label: 'API Key', type: 'text', required: true }
+  ]
+}
+```
+
+#### **2. Platform Connection Modal (`/components/PlatformConnection/PlatformConnectionModal.jsx`)**
+
+Dynamic modal that adapts to each platform's setup requirements:
+
+**Features:**
+- Fetches platform connection status on open (shows `LoaderMedium` during fetch)
+- Dynamically renders input fields based on `platformConfig.fields`
+- Debounced API key saving (500ms delay, shows `InputSpinner` while saving)
+- "Configured" badge when credentials are saved
+- Login button (disabled if no API key saved)
+- Disconnect button for connected platforms
+- Status messages based on connection state
+- Tracks `hasChanges` to prevent unnecessary dashboard refreshes
+- Modal does NOT close on outside click or Escape key
+
+**State Management:**
+- `isLoadingConnection`: Medium spinner when fetching initial data
+- `isSaving`: Tracks if any field is being saved
+- `savingField`: Tracks which field is currently saving
+- `formData`: Current input values
+- `hasChanges`: Tracks if user made any changes
+
+**Connection States:**
+- No credentials: Shows input field, no "Configured" badge
+- Credentials saved (`hasCredentials: true`): Shows "Configured" badge, enables Login button
+- Login clicked (`isFirstTimeLogin: true`): Shows "Login in Progress..." button text
+- Connected (`isConnected: true`): Shows "Disconnect" button instead of "Login"
+
+#### **3. Platform Store (`/store/platformStore.js`)**
+
+Manages platform connection state:
+
+**State:**
+- `connections`: Array of platform connections with:
+  - `platform`: Platform ID (e.g., 'hubspot')
+  - `isConnected`: Whether platform is fully connected
+  - `isFirstTimeLogin`: Whether login automation is in progress
+  - `hasCredentials`: Whether credentials are saved
+  - `credentials`: Encrypted credentials (JSON)
+
+**Methods:**
+- `fetchUserPlatforms()`: Fetches all platforms for dashboard (shows `LoaderLarge`)
+- `getPlatformConnection(platformId)`: Gets connection for specific platform
+- `saveConnection(platform, credentials)`: Saves credentials (debounced in modal)
+- `updateConnectionStatus(platform, status)`: Updates `isConnected`/`isFirstTimeLogin`
+- `disconnectPlatform(platform)`: Removes credentials and resets statuses
+
+#### **4. Platform API Service (`/services/api.js` → `platformAPI`)**
+
+Backend API integration:
+
+**Endpoints:**
+- `GET /api/platforms/connections?platform={platformId}`: Get all platforms or specific platform
+- `POST /api/platforms/connections`: Save/update credentials
+- `PATCH /api/platforms/connections/:platform/status`: Update connection flags
+- `POST /api/platforms/connections/:platform/disconnect`: Disconnect platform
+
+**Note:** All endpoints require JWT authentication via `Authorization: Bearer {token}` header.
+
+### Dashboard Integration (`/pages/Dashboard.jsx`)
+
+**Behavior:**
+- On mount: Calls `fetchUserPlatforms()` (shows `LoaderLarge` during fetch)
+- Platform cards: Clicking card always opens `PlatformConnectionModal`
+- "Work" button: 
+  - If connected: Navigates to chat page with platform selected
+  - If not connected: Opens modal
+- After modal closes: Only refreshes if `hasChanges === true`
+
+**Platform Status:**
+- Uses `isPlatformEnabled()` from config to mark platforms as `comingSoon`
+- Only enabled platforms can be connected
+- Connected platforms show "Work" button, others show "Connect"
+
+### Connection Flow
+
+1. **User clicks platform card** → Modal opens
+2. **Modal fetches connection status** → Shows `LoaderMedium` during fetch
+3. **User enters API key** → Debounced save (500ms), shows `InputSpinner`
+4. **API key saved** → "Configured" badge appears, Login button enabled
+5. **User clicks Login** → Sets `isFirstTimeLogin: true`, triggers automation (TODO)
+6. **Automation completes** → Sets `isConnected: true`, `isFirstTimeLogin: false`
+7. **User closes modal** → Dashboard refreshes only if `hasChanges === true`
+
+### Database Schema (Backend)
+
+Platform connections stored in `platform_connections` table:
+- `id`: UUID
+- `userId`: User ID (foreign key)
+- `platform`: Platform identifier ('hubspot', 'linkedin', etc.)
+- `isConnected`: Boolean (true when fully connected)
+- `isFirstTimeLogin`: Boolean (true when login automation in progress)
+- `credentials`: JSON (encrypted API keys, OAuth tokens, etc.)
+- `lastConnectedAt`: DateTime
+- `lastDisconnectedAt`: DateTime
+- Unique constraint on `[userId, platform]`
+
+### Loading States
+
+- **`LoaderLarge`**: Dashboard initial load (`fetchUserPlatforms`)
+- **`LoaderMedium`**: Modal initial load (fetching platform connection status)
+- **`InputSpinner`**: Input field saving (debounced API key save)
+
+### Best Practices
+
+1. **Always use `platformStore` methods** - Never call `platformAPI` directly from components
+2. **Use `platforms.config.js`** - Don't hardcode platform details
+3. **Track `hasChanges`** - Only refresh dashboard when user makes changes
+4. **Show appropriate loaders** - Large for dashboard, medium for modal, small for inputs
+5. **Debounce input saves** - Use 500ms delay for API key input
+6. **Disable inputs during save** - Prevent multiple simultaneous saves
+7. **Use memoization** - Memoize `platformConfig` and `platformId` in modal to prevent loops
 
 ---
 
@@ -415,10 +591,19 @@ className="bg-base-background text-text-primary border-border-muted"
 ### Adding a New API Endpoint
 1. ⚠️ **Add method to store, NOT directly to service from component**
 2. Add method to appropriate API object in `/services/api.js` (for store to use)
-3. Add corresponding method in the appropriate store (e.g., `authStore.js`)
+3. Add corresponding method in the appropriate store (e.g., `authStore.js`, `platformStore.js`)
 4. Components call store method, store calls service method
 5. Use `ApiService` base class
 6. Handle errors in store and return consistent response format
+
+### Adding a New Platform
+1. Add platform logo to `/assets/logos/`
+2. Add platform configuration to `/config/platforms.config.js`:
+   - Add to `platformsConfig` with setup requirements
+   - Add to `platformStatusList` with `status: true/false`
+3. Platform will automatically appear on dashboard if `status: true`
+4. Modal will dynamically render fields based on `platformConfig.fields`
+5. Backend will handle platform connection via existing APIs (no backend changes needed)
 
 ### Adding a New Store
 1. ⚠️ **Check if existing store can handle the functionality first**
@@ -559,6 +744,64 @@ const response = await signin(email, password);
 ```jsx
 // ❌ WRONG: Never import services in components
 import { authAPI } from '../services/api';
+```
+
+---
+
+---
+
+## 🔄 Platform Connection System - Quick Reference
+
+**Get Platform Config:**
+```jsx
+import { getPlatformConfig, isPlatformEnabled } from '../config/platforms.config';
+const config = getPlatformConfig('hubspot');
+const enabled = isPlatformEnabled('hubspot');
+```
+
+**Use Platform Store:**
+```jsx
+import usePlatformStore from '../store/platformStore';
+
+const { 
+  connections, 
+  fetchUserPlatforms, 
+  getPlatformConnection,
+  saveConnection 
+} = usePlatformStore();
+
+// Fetch all platforms (dashboard)
+await fetchUserPlatforms();
+
+// Get specific platform connection
+const connection = getPlatformConnection('hubspot');
+
+// Save credentials
+await saveConnection('hubspot', { apiKey: 'xxx' });
+```
+
+**Open Platform Modal:**
+```jsx
+import { PlatformConnectionModal } from '../components/PlatformConnection';
+
+<PlatformConnectionModal
+  isOpen={isModalOpen}
+  onClose={(hasChanges) => {
+    if (hasChanges) {
+      fetchUserPlatforms(); // Refresh dashboard
+    }
+    setIsModalOpen(false);
+  }}
+  platformName="HubSpot"
+/>
+```
+
+**Check Connection Status:**
+```jsx
+const connection = getPlatformConnection('hubspot');
+const isConnected = connection?.isConnected === true;
+const hasCredentials = connection?.hasCredentials === true;
+const isLoginInProgress = connection?.isFirstTimeLogin === true;
 ```
 
 ---
