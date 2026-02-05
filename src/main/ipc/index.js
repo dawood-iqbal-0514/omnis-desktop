@@ -1,9 +1,8 @@
 ﻿const { setupAuthIPC } = require('./authIPC');
 const { setupSystemIPC } = require('./systemIPC');
 const { setupAutomationIPC } = require('./automationIPC');
-const { setupLLMIPC } = require('./llmIPC');
 const { setupUpdateIPC } = require('./updateIPC');
-const { setupDownloadIPC } = require('./downloadIPC');
+const { setupCerebrasIPC } = require('./cerebrasIPC');
 
 function setupIPC(mainWindow) {
   console.log('🔧 Setting up IPC handlers...');
@@ -30,24 +29,17 @@ function setupIPC(mainWindow) {
   }
   
   try {
-    setupLLMIPC(mainWindow);
-    console.log('✅ LLM IPC setup');
-  } catch (e) {
-    console.error('❌ LLM IPC failed:', e.message, e.stack);
-  }
-  
-  try {
     setupUpdateIPC(mainWindow);
     console.log('✅ Update IPC setup');
   } catch (e) {
     console.error('❌ Update IPC failed:', e.message);
   }
-  
+
   try {
-    setupDownloadIPC(mainWindow);
-    console.log('✅ Download IPC setup');
+    setupCerebrasIPC();
+    console.log('✅ Cerebras IPC setup');
   } catch (e) {
-    console.error('❌ Download IPC failed:', e.message);
+    console.error('❌ Cerebras IPC failed:', e.message);
   }
 
   console.log('✅ All IPC handlers initialized');

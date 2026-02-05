@@ -1,6 +1,7 @@
 ﻿import React from 'react';
-import Select from 'react-select';
+import Select, { components } from 'react-select';
 import useThemeStore from '../../store/themeStore';
+import { Tooltip } from '../Tooltip';
 
 const Dropdown = ({
   options = [],
@@ -15,6 +16,21 @@ const Dropdown = ({
 }) => {
   const theme = useThemeStore((state) => state.theme);
   const isDark = theme === 'dark';
+
+  // Custom Option component with tooltip for disabled items
+  const Option = (props) => {
+    const { isDisabled } = props;
+    
+    if (isDisabled) {
+      return (
+        <Tooltip content="Coming soon!" position="top" className="w-full">
+          <components.Option {...props} />
+        </Tooltip>
+      );
+    }
+    
+    return <components.Option {...props} />;
+  };
 
   const customStyles = {
     control: (provided, state) => ({
@@ -53,10 +69,11 @@ const Dropdown = ({
       color: state.isSelected
         ? '#ffffff'
         : 'var(--color-text-primary)',
-      cursor: 'pointer',
+      cursor: state.isDisabled ? 'not-allowed' : 'pointer',
+      opacity: state.isDisabled ? 0.6 : 1,
       '&:active': {
-        backgroundColor: 'var(--color-primary-accent)',
-        color: '#ffffff',
+        backgroundColor: state.isDisabled ? 'transparent' : 'var(--color-primary-accent)',
+        color: state.isDisabled ? 'var(--color-text-primary)' : '#ffffff',
       },
     }),
     singleValue: (provided) => ({
@@ -121,6 +138,7 @@ const Dropdown = ({
         isClearable={isClearable}
         styles={customStyles}
         classNamePrefix="omnis-select"
+        components={{ Option }}
         {...props}
       />
     </div>

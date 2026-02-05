@@ -24,16 +24,6 @@ contextBridge.exposeInMainWorld('updateAPI', {
   onUpdateDownloaded: (callback) => ipcRenderer.on('update:downloaded', callback),
 });
 
-contextBridge.exposeInMainWorld('llmAPI', {
-  initialize: () => ipcRenderer.invoke('llm:initialize'),
-  startChat: () => ipcRenderer.invoke('llm:start-chat'),
-  sendMessage: (message) => ipcRenderer.invoke('llm:send-message', message),
-  extractWorkflow: () => ipcRenderer.invoke('llm:extract-workflow'),
-  validateRequirements: () => ipcRenderer.invoke('llm:validate-requirements'),
-  getHistory: () => ipcRenderer.invoke('llm:get-history'),
-  reset: () => ipcRenderer.invoke('llm:reset'),
-});
-
 contextBridge.exposeInMainWorld('automationAPI', {
   getPlatforms: () => ipcRenderer.invoke('automation:get-platforms'),
   connectPlatform: (platformId, credentials) => ipcRenderer.invoke('automation:connect', platformId, credentials),
@@ -47,9 +37,10 @@ contextBridge.exposeInMainWorld('automationAPI', {
   onTaskError: (callback) => ipcRenderer.on('automation:task-error', callback),
 });
 
-contextBridge.exposeInMainWorld('downloadAPI', {
-  isModelDownloaded: () => ipcRenderer.invoke('download:is-model-downloaded'),
-  downloadModel: () => ipcRenderer.invoke('download:model'),
-  cancelDownload: () => ipcRenderer.invoke('download:cancel'),
-  onProgress: (callback) => ipcRenderer.on('download:progress', callback),
+contextBridge.exposeInMainWorld('cerebrasAPI', {
+  setApiKey: (apiKey) => ipcRenderer.invoke('cerebras:set-api-key', apiKey),
+  getApiKey: () => ipcRenderer.invoke('cerebras:get-api-key'),
+  sendMessage: (userMessage, chatHistory, platformName) => ipcRenderer.invoke('cerebras:send-message', userMessage, chatHistory, platformName),
+  extractWorkflow: (chatHistory) => ipcRenderer.invoke('cerebras:extract-workflow', chatHistory),
+  resetChat: () => ipcRenderer.invoke('cerebras:reset-chat'),
 });

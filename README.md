@@ -17,7 +17,6 @@ omnis-reach/
 
 - **Desktop App**: Electron 28 + React 18 + Vite 5 + Tailwind CSS
 - **State Management**: Zustand
-- **Local LLM**: Qwen3 (compiled)
 - **Browser Automation**: Selenium/DrissionPage
 - **Backend**: Node.js + Express
 - **Database**: MongoDB
@@ -37,10 +36,9 @@ npm run dev:server
 
 ## Architecture
 
-### Three Execution Layers:
-1. **Local LLM** - Natural language processing (runs in app)
-2. **Backend API** - Authentication, subscriptions, API-based platforms
-3. **Local Automation** - Browser automation for platforms without APIs
+### Two Execution Layers:
+1. **Backend API** - Authentication, subscriptions, API-based platforms
+2. **Local Automation** - Browser automation for platforms without APIs
 
 ## Adding a New Platform
 
