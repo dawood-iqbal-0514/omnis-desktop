@@ -13,7 +13,8 @@ if not email or not password:
     sys.exit(1)
 
 # Get profile path from environment or use default
-profile_path_str = os.getenv('HUBSPOT_PROFILE_PATH', os.path.join(os.path.expanduser('~'), 'OmnisReach_Profiles', 'hubspot', 'default'))
+default_profile_path = os.path.normpath(r"C:\Users\MDKG0514\OneDrive\Desktop\Portfolio\Dawood\OmnisReach\omnis-desktop\src\automation\chrome_profiles\Profile 1")
+profile_path_str = os.getenv('HUBSPOT_PROFILE_PATH', default_profile_path)
 
 # Configure browser options
 options = ChromiumOptions()

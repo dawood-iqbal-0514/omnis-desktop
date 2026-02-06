@@ -4,8 +4,7 @@ from DrissionPage import ChromiumPage, ChromiumOptions
 from DrissionPage.common import Keys
 
 
-HOME_DIR = Path.home()
-PROFILE_PATH = HOME_DIR / "OmnisReach_Profiles" / "hubspot" / "default"
+PROFILE_PATH = Path(r"C:\Users\MDKG0514\OneDrive\Desktop\Portfolio\Dawood\OmnisReach\omnis-desktop\src\automation\chrome_profiles")
 
 WORKFLOW_AI_TEXT = "Create a workflow that sends an email when a contact is created. You can write any name for the workflow"
 
