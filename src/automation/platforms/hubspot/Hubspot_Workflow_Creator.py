@@ -19,129 +19,37 @@ WORKFLOW_AI_TEXT = "Create a workflow that sends an email when a contact is crea
 _last_response_div_index = 0
 
 
-def click_new_chat_button(page, timeout=10):
-    """Click the 'Start a new chat' button to begin a fresh conversation."""
-    time.sleep(1)  # Let sidebar fully render
+def click_new_chat_button(page):
+    time.sleep(1)
     
-    # Try multiple selectors for the new chat button
-    selectors = [
-        '[data-test-id="new-thread-button"]',
-        '[aria-label="Start a new chat"]',
-        'button[data-test-id="new-thread-button"]'
-    ]
-    
-    for sel in selectors:
-        try:
-            btn = page.ele(sel, timeout=3)
-            if btn:
-                btn.click()
-                print("✓ Clicked 'New Chat' button")
-                time.sleep(1)  # Wait for new chat to initialize
-                return True
-        except Exception:
-            continue
-    
-    # Try JavaScript approach
-    try:
-        result = page.run_js("""
-            let btn = document.querySelector('[data-test-id="new-thread-button"]');
-            if (!btn) {
-                btn = document.querySelector('[aria-label="Start a new chat"]');
-            }
-            if (btn) {
-                btn.click();
-                return {success: true};
-            }
-            
-            // Try within iframes
-            let iframes = document.querySelectorAll('iframe');
-            for (let iframe of iframes) {
-                try {
-                    let doc = iframe.contentDocument || iframe.contentWindow.document;
-                    if (!doc) continue;
-                    
-                    let btn = doc.querySelector('[data-test-id="new-thread-button"]');
-                    if (!btn) {
-                        btn = doc.querySelector('[aria-label="Start a new chat"]');
-                    }
-                    if (btn) {
-                        btn.click();
-                        return {success: true};
-                    }
-                } catch(e) {}
-            }
-            return {success: false};
-        """)
-        
-        if result.get('success'):
-            print("✓ Clicked 'New Chat' button (via JS)")
-            time.sleep(1)
-            return True
-    except Exception:
-        pass
-    
-    print("⚠ Could not find 'New Chat' button (continuing anyway...)")
+    btn = page.ele('xpath://button[@data-test-id="new-thread-button"]')
+    if btn:
+        btn.click()
+        print("✓ Clicked 'New Chat' button")
+        time.sleep(1)
+        return True
     return False
 
 
-def open_assistant_sidebar(page, timeout=10):
-    """
-    Click the Assistant button in the global toolbar to open ChatSpot sidebar.
-    This is simpler than navigating to workflows.
-    """
+def open_assistant_sidebar(page, i = 0):
     print("\nOpening Assistant sidebar...")
     time.sleep(0.5)
     
-    # Try multiple selectors for the Assistant button
-    selectors = [
-        '#hs-global-toolbar-copilot-list-item',
-        '[data-test-id="hs-global-toolbar-copilot-list-item"]',
-        '[aria-label="Open Assistant"]',
-        'button[id="hs-global-toolbar-copilot-list-item"]'
-    ]
-    
-    for sel in selectors:
-        try:
-            btn = page.ele(sel, timeout=3)
-            if btn:
-                btn.click()
-                print("✓ Clicked 'Assistant' button")
-                print("Waiting for sidebar to appear...")
-                time.sleep(2)  # Wait for sidebar to fully render
-                # Click new chat to start fresh conversation
-                click_new_chat_button(page)
-                return True
-        except Exception:
-            continue
-    
-    # Try JavaScript approach
-    try:
-        result = page.run_js("""
-            let btn = document.querySelector('#hs-global-toolbar-copilot-list-item');
-            if (!btn) {
-                btn = document.querySelector('[data-test-id="hs-global-toolbar-copilot-list-item"]');
-            }
-            if (!btn) {
-                btn = document.querySelector('[aria-label="Open Assistant"]');
-            }
-            if (btn) {
-                btn.click();
-                return {success: true};
-            }
-            return {success: false};
-        """)
-        
-        if result.get('success'):
-            print("✓ Clicked 'Assistant' button (via JS)")
-            print("Waiting for sidebar to appear...")
-            time.sleep(2)  # Wait for sidebar to fully render
-            click_new_chat_button(page)
-            return True
-    except Exception:
-        pass
-    
-    print("⚠ Could not find 'Assistant' button")
-    return False
+    btn = page.ele('#hs-global-toolbar-copilot-list-item')
+    if btn:
+        btn.click()
+        time.sleep(2)
+        click_new_chat_button(page)
+        print("✓ Assistant sidebar opened")
+        return True
+    else:
+        if i < 3:
+            print("⚠ Assistant sidebar button not found, refreshing and retrying...")
+            page.refresh()
+            open_assistant_sidebar(page, i + 1)
+        else:
+            print("⚠ Could not find Assistant sidebar button after multiple attempts.")
+            return False
 
 
 def type_in_ai_prompt(page, text, delay_seconds=2, timeout=20):
