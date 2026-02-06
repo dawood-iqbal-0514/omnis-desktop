@@ -205,6 +205,17 @@ export const passwordResetAPI = {
   },
 
   /**
+   * Verify OTP for password reset
+   */
+  verifyPasswordResetOTP: async (email, otp) => {
+    const api = new ApiService();
+    return await api.post('/auth/password/verify-otp', {
+      email,
+      otp,
+    });
+  },
+
+  /**
    * Reset password with OTP verification
    */
   resetPassword: async (email, otp, password) => {
