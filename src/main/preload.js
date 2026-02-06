@@ -35,6 +35,13 @@ contextBridge.exposeInMainWorld('automationAPI', {
   onTaskProgress: (callback) => ipcRenderer.on('automation:task-progress', callback),
   onTaskComplete: (callback) => ipcRenderer.on('automation:task-complete', callback),
   onTaskError: (callback) => ipcRenderer.on('automation:task-error', callback),
+  
+  // 2FA support
+  submit2FAToken: (token) => ipcRenderer.invoke('automation:submit-2fa-token', token),
+  on2FARequest: (callback) => ipcRenderer.on('automation:2fa-request', callback),
+  
+  // Login script execution
+  executeLoginScript: (platformId, credentials) => ipcRenderer.invoke('automation:execute-login-script', platformId, credentials),
 });
 
 contextBridge.exposeInMainWorld('cerebrasAPI', {

@@ -114,10 +114,6 @@ class ApiService {
 
 // Auth API methods
 export const authAPI = {
-  /**
-   * Sign up a new user
-   * Note: Token is NOT generated on signup - user must verify email first, then sign in
-   */
   signup: async (name, email, password) => {
     const api = new ApiService();
     const response = await api.post('/auth/signup', {
@@ -260,6 +256,11 @@ export const platformAPI = {
   disconnectPlatform: async (platform) => {
     const api = new ApiService();
     return await api.post(`/platforms/connections/${platform}/disconnect`);
+  },
+
+  getConnectionCredentials: async (platform) => {
+    const api = new ApiService();
+    return await api.get(`/platforms/connections/${platform}/credentials`);
   },
 };
 

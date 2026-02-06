@@ -538,14 +538,12 @@ automation/platforms/hubspot/
     {
       "name": "hubspot_login_automation.py",
       "actionId": "login",
-      "description": "Login to HubSpot and establish session",
-      "required": false
+      "description": "Login to HubSpot and establish session"
     },
     {
       "name": "hubspot_list_automation.py",
       "actionId": "list_automation",
-      "description": "Perform list operations via automation",
-      "required": false
+      "description": "Perform list operations via automation"
     }
   ]
 }
@@ -679,8 +677,7 @@ automation/platforms/hubspot/
    {
      "name": "platform_action_automation.py",
      "actionId": "action_id",
-     "description": "Description of what the script does",
-     "required": false
+     "description": "Description of what the script does"
    }
    ```
 3. **Script automatically available** - Chatbot will see it in injected prompt

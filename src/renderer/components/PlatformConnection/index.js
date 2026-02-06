@@ -1,3 +1,3 @@
 ﻿export { default as LinkedInConnection } from './LinkedInConnection';
-export { default as PlatformConnectionModal } from './PlatformConnectionModal';
+export { default as HubspotConnectionModal } from './HubspotConnectionModal';
 

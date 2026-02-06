@@ -3,7 +3,7 @@ import Confetti from 'react-confetti';
 import { ButtonPlain, ButtonIconed } from '../components/Button';
 import { LoaderSmall } from '../components/Loader';
 import { ExecutionPlanCard, ExecutionLogs } from '../components/Chat';
-import PlatformSelectionModal from '../components/PlatformSelectionModal';
+import { PlatformSelectionModal } from '../components/Modal';
 import usePlatformStore from '../store/platformStore';
 import { formatTimeLocal12Hour } from '../utils/date';
 
