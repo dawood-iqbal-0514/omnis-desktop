@@ -1,7 +1,7 @@
 ﻿import React, { useState, useEffect } from 'react';
 import { Tooltip } from '../components/Tooltip';
 import { LoaderLarge } from '../components/Loader';
-import { PlatformConnectionModal } from '../components/PlatformConnection';
+import { HubspotConnectionModal } from '../components/PlatformConnection';
 import usePlatformStore from '../store/platformStore';
 import useAuthStore from '../store/authStore';
 import { getAllPlatforms, isPlatformEnabled } from '../config/platforms.config';
@@ -16,7 +16,8 @@ const Dashboard = ({ setActivePage }) => {
   // Fetch user platforms on mount
   useEffect(() => {
     fetchUserPlatforms();
-  }, [fetchUserPlatforms]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []); // Only run once on mount
   
   // Get first name from user's name
   const firstName = user?.name?.split(' ')[0] || user?.email?.split('@')[0] || 'User';
@@ -133,11 +134,10 @@ const Dashboard = ({ setActivePage }) => {
         ))}
       </div>
 
-      {selectedPlatform && (
-        <PlatformConnectionModal
+      {selectedPlatform && selectedPlatform.id === 'hubspot' && (
+        <HubspotConnectionModal
           isOpen={connectionModalOpen}
           onClose={handleModalClose}
-          platformName={selectedPlatform.name}
         />
       )}
     </div>

@@ -1,6 +1,6 @@
 import React, { useState } from 'react';
 import { ButtonPlain } from '../Button';
-import { Modal } from '../Modal';
+import Modal from './Modal';
 import { Dropdown } from '../Dropdown';
 import hubspotLogo from '@assets/logos/hubspot.png';
 import linkedinLogo from '@assets/logos/linkedin.png';

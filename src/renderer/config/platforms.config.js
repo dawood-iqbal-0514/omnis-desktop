@@ -29,6 +29,20 @@ export const platformsConfig = {
         placeholder: 'Enter your HubSpot API key',
         required: true,
       },
+      {
+        name: 'email',
+        label: 'Email Address',
+        type: 'email',
+        placeholder: 'your@example.com',
+        required: true,
+      },
+      {
+        name: 'password',
+        label: 'Password',
+        type: 'password',
+        placeholder: 'Enter your HubSpot password',
+        required: true,
+      },
     ],
     buttons: {
       connect: { label: 'Connect', action: 'openConnection' },

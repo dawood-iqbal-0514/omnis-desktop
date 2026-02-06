@@ -1,6 +1,8 @@
 ﻿const { ipcMain } = require('electron');
 
 let orchestrator = null;
+let loginExecutor = null;
+let LoginScriptExecutor = null;
 
 function getOrchestrator() {
   if (!orchestrator) {
@@ -133,6 +135,51 @@ function setupAutomationIPC(mainWindow) {
       return { success: true };
     } catch (error) {
       console.error(`Failed to cancel task ${taskId}:`, error);
+      return { success: false, error: error.message };
+    }
+  });
+
+  // Lazy-load LoginScriptExecutor to prevent module loading errors
+  try {
+    if (!LoginScriptExecutor) {
+      LoginScriptExecutor = require('../services/loginScriptExecutor').LoginScriptExecutor;
+    }
+    // Initialize login executor
+    loginExecutor = new LoginScriptExecutor(mainWindow);
+    console.log('✅ LoginScriptExecutor initialized');
+  } catch (error) {
+    console.error('❌ Failed to load LoginScriptExecutor:', error);
+    // Continue anyway - handler will check for executor
+  }
+
+  // Execute login script
+  ipcMain.handle('automation:execute-login-script', async (event, platformId, credentials) => {
+    try {
+      if (!LoginScriptExecutor) {
+        LoginScriptExecutor = require('../services/loginScriptExecutor').LoginScriptExecutor;
+      }
+      if (!loginExecutor) {
+        loginExecutor = new LoginScriptExecutor(mainWindow);
+      }
+      const result = await loginExecutor.executeLoginScript(platformId, credentials);
+      return { success: true, ...result };
+    } catch (error) {
+      console.error('Login script execution failed:', error);
+      return { success: false, error: error.message };
+    }
+  });
+  console.log('✅ Registered IPC handler: automation:execute-login-script');
+
+  // Submit 2FA token
+  ipcMain.handle('automation:submit-2fa-token', async (event, token) => {
+    try {
+      if (!loginExecutor) {
+        return { success: false, error: 'No active login process' };
+      }
+      const submitted = loginExecutor.submit2FAToken(token);
+      return { success: submitted };
+    } catch (error) {
+      console.error('Failed to submit 2FA token:', error);
       return { success: false, error: error.message };
     }
   });

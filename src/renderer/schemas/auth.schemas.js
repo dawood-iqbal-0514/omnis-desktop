@@ -1,10 +1,5 @@
 import * as Yup from 'yup';
 
-/**
- * Authentication validation schemas
- * Centralized Yup schemas for all auth forms
- */
-
 // Common validation rules
 const emailValidation = Yup.string()
   .email('Please enter a valid email address')
@@ -31,9 +26,6 @@ const otpValidation = Yup.string()
   .length(6, 'OTP must be 6 digits')
   .matches(/^\d+$/, 'OTP must contain only numbers');
 
-/**
- * Sign Up validation schema
- */
 export const signUpSchema = Yup.object().shape({
   name: nameValidation,
   email: emailValidation,
@@ -58,34 +50,27 @@ export const signInSchema = Yup.object().shape({
   password: signInPasswordValidation,
 });
 
-/**
- * Forgot Password validation schema
- */
 export const forgotPasswordSchema = Yup.object().shape({
   email: emailValidation,
 });
 
-/**
- * Reset Password validation schema
- */
-export const resetPasswordSchema = Yup.object().shape({
+
+export const verifyPasswordResetOTPSchema = Yup.object().shape({
   otp: otpValidation,
+});
+
+
+export const resetPasswordSchema = Yup.object().shape({
   password: passwordValidation,
   confirmPassword: Yup.string()
     .required('Please confirm your password')
     .oneOf([Yup.ref('password')], 'Passwords must match'),
 });
 
-/**
- * Email Verification (OTP) validation schema
- */
 export const emailVerificationSchema = Yup.object().shape({
   otp: otpValidation,
 });
 
-/**
- * Initial values for forms
- */
 export const initialValues = {
   signUp: {
     name: '',
@@ -101,8 +86,10 @@ export const initialValues = {
   forgotPassword: {
     email: '',
   },
-  resetPassword: {
+  verifyPasswordResetOTP: {
     otp: '',
+  },
+  resetPassword: {
     password: '',
     confirmPassword: '',
   },

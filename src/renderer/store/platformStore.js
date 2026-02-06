@@ -11,18 +11,44 @@ const usePlatformStore = create((set, get) => ({
     set({ selectedPlatform: platform });
   },
 
-  fetchUserPlatforms: async () => {
-    set({ loading: true, error: null });
+  fetchUserPlatforms: async (platform = null) => {
+    // Only set global loading when fetching ALL platforms (for Dashboard)
+    // Don't set loading when fetching a single platform (for modals)
+    if (!platform) {
+      set({ loading: true, error: null });
+    } else {
+      set({ error: null });
+    }
     try {
-      const response = await platformAPI.getUserPlatforms();
+      const response = await platformAPI.getUserPlatforms(platform);
       if (response.success) {
-        // Update connections array with all platforms and their statuses
-        set({ connections: response.data, loading: false });
-        return { success: true, data: response.data };
+        if (platform) {
+          // Single platform - update or add to connections array
+          // Create new array reference for Zustand reactivity
+          const connections = get().connections;
+          const index = connections.findIndex((c) => c.platform === platform.toLowerCase());
+          let newConnections;
+          if (index >= 0) {
+            newConnections = [...connections];
+            newConnections[index] = response.data;
+          } else {
+            newConnections = [...connections, response.data];
+          }
+          set({ connections: newConnections });
+          return { success: true, data: response.data };
+        } else {
+          // All platforms - replace connections array
+          set({ connections: response.data, loading: false });
+          return { success: true, data: response.data };
+        }
       }
       throw new Error(response.error || 'Failed to fetch user platforms');
     } catch (error) {
-      set({ error: error.message, loading: false });
+      if (!platform) {
+        set({ error: error.message, loading: false });
+      } else {
+        set({ error: error.message });
+      }
       return { success: false, error: error.message };
     }
   },
@@ -33,15 +59,17 @@ const usePlatformStore = create((set, get) => ({
     try {
       const response = await platformAPI.saveConnection(platform, credentials);
       if (response.success) {
-        // Update connections array
+        // Update connections array - create new array reference for Zustand reactivity
         const connections = get().connections;
         const index = connections.findIndex((c) => c.platform === platform);
+        let newConnections;
         if (index >= 0) {
-          connections[index] = { ...connections[index], ...response.data };
+          newConnections = [...connections];
+          newConnections[index] = { ...connections[index], ...response.data };
         } else {
-          connections.push(response.data);
+          newConnections = [...connections, response.data];
         }
-        set({ connections });
+        set({ connections: newConnections });
         return { success: true, data: response.data };
       }
       throw new Error(response.error || 'Failed to save connection');
@@ -61,15 +89,17 @@ const usePlatformStore = create((set, get) => ({
         isFirstTimeLogin
       );
       if (response.success) {
-        // Update connections array
+        // Update connections array - create new array reference for Zustand reactivity
         const connections = get().connections;
         const index = connections.findIndex((c) => c.platform === platform);
+        let newConnections;
         if (index >= 0) {
-          connections[index] = { ...connections[index], ...response.data };
+          newConnections = [...connections];
+          newConnections[index] = { ...connections[index], ...response.data };
         } else {
-          connections.push(response.data);
+          newConnections = [...connections, response.data];
         }
-        set({ connections });
+        set({ connections: newConnections });
         return { success: true, data: response.data };
       }
       throw new Error(response.error || 'Failed to update connection status');
@@ -85,15 +115,17 @@ const usePlatformStore = create((set, get) => ({
     try {
       const response = await platformAPI.disconnectPlatform(platform);
       if (response.success) {
-        // Update connections array
+        // Update connections array - create new array reference for Zustand reactivity
         const connections = get().connections;
         const index = connections.findIndex((c) => c.platform === platform);
+        let newConnections;
         if (index >= 0) {
-          connections[index] = { ...connections[index], ...response.data };
+          newConnections = [...connections];
+          newConnections[index] = { ...connections[index], ...response.data };
         } else {
-          connections.push(response.data);
+          newConnections = [...connections, response.data];
         }
-        set({ connections });
+        set({ connections: newConnections });
         return { success: true, data: response.data };
       }
       throw new Error(response.error || 'Failed to disconnect platform');
@@ -110,6 +142,23 @@ const usePlatformStore = create((set, get) => ({
 
   getPlatformConnection: (platform) => {
     return get().connections.find((c) => c.platform === platform?.toLowerCase());
+  },
+
+  getConnectionCredentials: async (platform) => {
+    set({ error: null });
+    try {
+      const response = await platformAPI.getConnectionCredentials(platform);
+      if (response.success) {
+        // Backend returns: { success: true, data: { credentials: {...} } }
+        // Return credentials directly for easier access
+        const credentials = response.data?.credentials || response.data;
+        return { success: true, data: credentials };
+      }
+      throw new Error(response.error || 'Failed to fetch connection credentials');
+    } catch (error) {
+      set({ error: error.message });
+      return { success: false, error: error.message };
+    }
   },
 }));
 

@@ -114,6 +114,16 @@ const useAuthStore = create((set) => ({
     }
   },
 
+  // Verify OTP for password reset
+  verifyPasswordResetOTP: async (email, otp) => {
+    try {
+      const response = await passwordResetAPI.verifyPasswordResetOTP(email, otp);
+      return response;
+    } catch (error) {
+      throw error;
+    }
+  },
+
   // Reset password with OTP
   resetPassword: async (email, otp, password) => {
     try {

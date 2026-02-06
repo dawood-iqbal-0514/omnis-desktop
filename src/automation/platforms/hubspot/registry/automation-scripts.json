@@ -1,22 +1,14 @@
 {
   "availableScripts": [
     {
-      "name": "Hubspot_Login.py",
-      "actionId": "login",
-      "description": "Login to HubSpot and establish session",
-      "required": false
-    },
-    {
       "name": "Hubspot_Workflow_Creator.py",
       "actionId": "workflow_creator",
-      "description": "Creates workflows using the HubSpot UI and AI",
-      "required": false
+      "description": "Creates workflows using the HubSpot UI and AI"
     },
     {
       "name": "Hubspot_Orchestrator.py",
       "actionId": "orchestrator",
-      "description": "Orchestrates various HubSpot automation tasks",
-      "required": false
+      "description": "Orchestrates various HubSpot automation tasks"
     }
   ]
 }

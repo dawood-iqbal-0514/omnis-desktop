@@ -1,7 +1,7 @@
 ﻿import React, { useState } from 'react';
 import { ButtonPlain } from '../components/Button';
 import { Tooltip } from '../components/Tooltip';
-import { LinkedInConnection, PlatformConnectionModal } from '../components/PlatformConnection';
+import { LinkedInConnection, HubspotConnectionModal } from '../components/PlatformConnection';
 import usePlatformStore from '../store/platformStore';
 import { getAllPlatforms, isPlatformEnabled } from '../config/platforms.config';
 
@@ -135,11 +135,10 @@ const Platforms = () => {
         onSuccess={handleLinkedInSuccess}
       />
       
-      {selectedPlatform && (
-        <PlatformConnectionModal
+      {selectedPlatform && selectedPlatform.id === 'hubspot' && (
+        <HubspotConnectionModal
           isOpen={connectionModalOpen}
           onClose={handleModalClose}
-          platformName={selectedPlatform.name}
         />
       )}
     </div>
