@@ -3,7 +3,6 @@ from DrissionPage.common import Keys
 import time
 import os
 import sys
-from pathlib import Path
 
 # Get credentials from environment variables
 email = os.getenv('HUBSPOT_EMAIL', '')
@@ -16,64 +15,20 @@ if not email or not password:
 # Get profile path from environment or use default
 profile_path_str = os.getenv('HUBSPOT_PROFILE_PATH', os.path.join(os.path.expanduser('~'), 'OmnisReach_Profiles', 'hubspot', 'default'))
 
-# Create profile directory if it doesn't exist
-profile_path = Path(profile_path_str)
-if not profile_path.exists():
-    try:
-        profile_path.mkdir(parents=True, exist_ok=True)
-        print(f"Created profile directory at: {profile_path_str}")
-    except Exception as e:
-        print(f"Error creating profile directory: {e}", file=sys.stderr)
-        sys.exit(1)
-
 # Configure browser options
 options = ChromiumOptions()
 
 # Set profile path
 profile_path_str = str(profile_path_str)  # Ensure it's a string
-options.set_user_data_path(profile_path_str)
-options.set_argument('--user-data-dir', profile_path_str)
-options.set_argument('--profile-directory', 'Default')
-
-# Headless mode configuration
-options.set_argument('--headless=new')
-options.set_argument('--disable-gpu')
-options.set_argument('--no-sandbox')
-options.set_argument('--disable-dev-shm-usage')
-options.set_argument('--disable-software-rasterizer')
-options.set_argument('--disable-extensions')
-options.set_argument('--disable-background-networking')
-options.set_argument('--disable-background-timer-throttling')
-options.set_argument('--disable-renderer-backgrounding')
-options.set_argument('--disable-backgrounding-occluded-windows')
+options.set_paths(user_data_path=profile_path_str)
 
 
 options.auto_port()
 
-# Launch browser with error handling (headless mode only)
-try:
-    print(f"Attempting to launch browser (headless) with profile: {profile_path_str}")
+page = ChromiumPage(options)
+time.sleep(0.5)
     
-    # Create ChromiumPage instance - DrissionPage will handle browser launch
-    page = ChromiumPage(options)
-    
-    # Small delay to ensure browser is fully initialized
-    time.sleep(0.5)
-    
-    print(f"Browser launched successfully with profile: {profile_path_str}")
-except Exception as e:
-    error_msg = f"Failed to launch browser in headless mode: {e}"
-    print(error_msg, file=sys.stderr)
-    print("", file=sys.stderr)
-    print("Troubleshooting tips:", file=sys.stderr)
-    print("1. Make sure Chrome or Chromium is installed", file=sys.stderr)
-    print("2. Try running Chrome manually to ensure it works", file=sys.stderr)
-    print("3. Check if the profile directory is accessible:", file=sys.stderr)
-    print(f"   {profile_path_str}", file=sys.stderr)
-    print("4. Make sure no other process is using this Chrome profile", file=sys.stderr)
-    print("5. Try installing Chrome from: https://www.google.com/chrome/", file=sys.stderr)
-    print("6. Ensure Chrome supports headless mode (Chrome 96+ required)", file=sys.stderr)
-    sys.exit(1)
+print(f"Browser launched successfully with profile: {profile_path_str}")
 
 page.clear_cache()
 page.get("https://app.hubspot.com/login")

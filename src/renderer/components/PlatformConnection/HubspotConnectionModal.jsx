@@ -9,17 +9,28 @@ import hubspotLogo from '@assets/logos/hubspot.png';
 
 const HubspotConnectionModal = ({ isOpen, onClose }) => {
   const { showSuccess, showError } = useToast();
+  
+  // Use Zustand selectors to ensure proper reactivity
   const {
-    getPlatformConnection,
     saveConnection,
     updateConnectionStatus,
     disconnectPlatform,
     getConnectionCredentials,
     fetchUserPlatforms,
-  } = usePlatformStore();
+  } = usePlatformStore((state) => ({
+    saveConnection: state.saveConnection,
+    updateConnectionStatus: state.updateConnectionStatus,
+    disconnectPlatform: state.disconnectPlatform,
+    getConnectionCredentials: state.getConnectionCredentials,
+    fetchUserPlatforms: state.fetchUserPlatforms,
+  }));
+
+  // Use a selector to get the connection object - this makes it reactive
+  const connection = usePlatformStore((state) =>
+    state.connections.find((c) => c.platform === 'hubspot')
+  );
 
   const platformId = 'hubspot';
-  const connection = getPlatformConnection(platformId);
   
   const [isLoadingConnection, setIsLoadingConnection] = useState(false);
   
@@ -230,19 +241,45 @@ const HubspotConnectionModal = ({ isOpen, onClose }) => {
   const handleLogin = async () => {
     setIsLoading(true);
     try {
-      // Fetch full credentials (including password) from backend using store
-      const credentialsResponse = await getConnectionCredentials(platformId);
+      console.log('[HubSpot Modal] handleLogin called');
       
-      if (!credentialsResponse.success || !credentialsResponse.data) {
-        showError(credentialsResponse.error || 'Credentials not found. Please save your email and password first.');
-        setIsLoading(false);
-        return;
+      // Cancel any pending debounce timer so we save immediately
+      if (debounceTimerRef.current) {
+        clearTimeout(debounceTimerRef.current);
+        debounceTimerRef.current = null;
       }
 
-      // Store already extracts credentials from response.data.credentials
-      const credentials = credentialsResponse.data;
-      const email = credentials?.email;
-      const password = credentials?.password;
+      // Get current form data
+      const currentFormData = formDataRef.current;
+      const localEmail = currentFormData.email?.trim();
+      const localPassword = currentFormData.password?.trim();
+      const localApiKey = currentFormData.apiKey?.trim();
+
+      // Save any unsaved credentials to backend before login
+      if (localApiKey) {
+        console.log('[HubSpot Modal] Saving API key before login...');
+        await saveConnection(platformId, { apiKey: localApiKey });
+      }
+      if (localEmail && localPassword) {
+        console.log('[HubSpot Modal] Saving email/password before login...');
+        await saveConnection(platformId, { email: localEmail, password: localPassword });
+      }
+
+      // Now fetch full credentials from backend
+      const credentialsResponse = await getConnectionCredentials(platformId);
+      console.log('[HubSpot Modal] credentialsResponse:', { success: credentialsResponse.success, hasData: !!credentialsResponse.data });
+      
+      let email, password;
+
+      if (credentialsResponse.success && credentialsResponse.data) {
+        const credentials = credentialsResponse.data;
+        email = credentials?.email;
+        password = credentials?.password;
+      }
+      
+      // Fall back to form data if backend credentials are incomplete
+      if (!email) email = localEmail;
+      if (!password) password = localPassword;
 
       if (!email || !password) {
         showError('Email and password are required for login. Please save them first.');
@@ -312,7 +349,12 @@ const HubspotConnectionModal = ({ isOpen, onClose }) => {
   };
 
   const hasApiKeySaved = () => {
-    return !!connection?.hasCredentials;
+    // Check both the connection object from store AND the local form data
+    // This ensures the button enables even if the store hasn't updated yet
+    const hasStoreCredentials = !!connection?.hasCredentials;
+    const hasLocalCredentials = !!(formData.apiKey?.trim() && formData.email?.trim() && formData.password?.trim());
+    console.log('[HubSpot Modal] hasApiKeySaved check:', { hasStoreCredentials, hasLocalCredentials, connectionHasCredentials: connection?.hasCredentials });
+    return hasStoreCredentials || hasLocalCredentials;
   };
 
   const isFullyConnected = connection?.isConnected && !connection?.isFirstTimeLogin;

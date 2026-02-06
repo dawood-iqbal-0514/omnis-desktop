@@ -24,15 +24,17 @@ const usePlatformStore = create((set, get) => ({
       if (response.success) {
         if (platform) {
           // Single platform - update or add to connections array
-          // Don't set global loading for single platform fetches
+          // Create new array reference for Zustand reactivity
           const connections = get().connections;
           const index = connections.findIndex((c) => c.platform === platform.toLowerCase());
+          let newConnections;
           if (index >= 0) {
-            connections[index] = response.data;
+            newConnections = [...connections];
+            newConnections[index] = response.data;
           } else {
-            connections.push(response.data);
+            newConnections = [...connections, response.data];
           }
-          set({ connections });
+          set({ connections: newConnections });
           return { success: true, data: response.data };
         } else {
           // All platforms - replace connections array
@@ -57,15 +59,17 @@ const usePlatformStore = create((set, get) => ({
     try {
       const response = await platformAPI.saveConnection(platform, credentials);
       if (response.success) {
-        // Update connections array
+        // Update connections array - create new array reference for Zustand reactivity
         const connections = get().connections;
         const index = connections.findIndex((c) => c.platform === platform);
+        let newConnections;
         if (index >= 0) {
-          connections[index] = { ...connections[index], ...response.data };
+          newConnections = [...connections];
+          newConnections[index] = { ...connections[index], ...response.data };
         } else {
-          connections.push(response.data);
+          newConnections = [...connections, response.data];
         }
-        set({ connections });
+        set({ connections: newConnections });
         return { success: true, data: response.data };
       }
       throw new Error(response.error || 'Failed to save connection');
@@ -85,15 +89,17 @@ const usePlatformStore = create((set, get) => ({
         isFirstTimeLogin
       );
       if (response.success) {
-        // Update connections array
+        // Update connections array - create new array reference for Zustand reactivity
         const connections = get().connections;
         const index = connections.findIndex((c) => c.platform === platform);
+        let newConnections;
         if (index >= 0) {
-          connections[index] = { ...connections[index], ...response.data };
+          newConnections = [...connections];
+          newConnections[index] = { ...connections[index], ...response.data };
         } else {
-          connections.push(response.data);
+          newConnections = [...connections, response.data];
         }
-        set({ connections });
+        set({ connections: newConnections });
         return { success: true, data: response.data };
       }
       throw new Error(response.error || 'Failed to update connection status');
@@ -109,15 +115,17 @@ const usePlatformStore = create((set, get) => ({
     try {
       const response = await platformAPI.disconnectPlatform(platform);
       if (response.success) {
-        // Update connections array
+        // Update connections array - create new array reference for Zustand reactivity
         const connections = get().connections;
         const index = connections.findIndex((c) => c.platform === platform);
+        let newConnections;
         if (index >= 0) {
-          connections[index] = { ...connections[index], ...response.data };
+          newConnections = [...connections];
+          newConnections[index] = { ...connections[index], ...response.data };
         } else {
-          connections.push(response.data);
+          newConnections = [...connections, response.data];
         }
-        set({ connections });
+        set({ connections: newConnections });
         return { success: true, data: response.data };
       }
       throw new Error(response.error || 'Failed to disconnect platform');
