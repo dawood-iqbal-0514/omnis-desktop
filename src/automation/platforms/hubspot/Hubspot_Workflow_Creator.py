@@ -5,7 +5,7 @@ from DrissionPage import ChromiumPage, ChromiumOptions
 from DrissionPage.common import Keys
 
 
-PROFILE_PATH = Path(r"C:\Users\MDKG0514\OneDrive\Desktop\Portfolio\Dawood\OmnisReach\omnis-desktop\src\automation\chrome_profiles")
+PROFILE_PATH = r"C:\Users\MDKG0514\OneDrive\Desktop\Portfolio\Dawood\OmnisReach\omnis-desktop\src\automation\chrome_profiles\Profile 1"
 
 WORKFLOW_AI_TEXT = "Create a workflow that sends an email when a contact is created. You can write any name for the workflow"
 
@@ -91,9 +91,6 @@ def get_response(page, timeout=120, check_interval=2):
     
     print("⏱ Timeout waiting for AI response")
     return None
-
-
-
 
 
 def create_browser():
