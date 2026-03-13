@@ -39,9 +39,17 @@ contextBridge.exposeInMainWorld('automationAPI', {
   // 2FA support
   submit2FAToken: (token) => ipcRenderer.invoke('automation:submit-2fa-token', token),
   on2FARequest: (callback) => ipcRenderer.on('automation:2fa-request', callback),
-  
+  off2FARequest: (callback) => ipcRenderer.removeListener('automation:2fa-request', callback),
+  onLoginDebug: (callback) => ipcRenderer.on('automation:login-debug', callback),
+  offLoginDebug: (callback) => ipcRenderer.removeListener('automation:login-debug', callback),
+
   // Login script execution
   executeLoginScript: (platformId, credentials) => ipcRenderer.invoke('automation:execute-login-script', platformId, credentials),
+  cancelLoginScript: () => ipcRenderer.invoke('automation:cancel-login-script'),
+  
+  // HubSpot AI support
+  submitHubSpotAIResponse: (response) => ipcRenderer.invoke('automation:submit-hubspot-ai-response', response),
+  onHubSpotAIQuestion: (callback) => ipcRenderer.on('automation:hubspot-ai-question', callback),
 });
 
 contextBridge.exposeInMainWorld('cerebrasAPI', {

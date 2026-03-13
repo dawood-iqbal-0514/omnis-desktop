@@ -78,6 +78,24 @@ const HubspotConnectionModal = ({ isOpen, onClose }) => {
     setHasChanges(false);
   }, [isOpen, connection]);
 
+  // Track loading states with refs so the unmount cleanup can read current values
+  // without re-running (and accidentally cancelling) on every state change
+  const isLoadingRef = useRef(false);
+  const isSubmitting2FARef = useRef(false);
+  isLoadingRef.current = isLoading;
+  isSubmitting2FARef.current = isSubmitting2FA;
+
+  // Cancel login script ONLY when the component unmounts — not on state changes
+  useEffect(() => {
+    return () => {
+      if ((isLoadingRef.current || isSubmitting2FARef.current) && window.automationAPI?.cancelLoginScript) {
+        window.automationAPI.cancelLoginScript().catch((error) => {
+          console.error('Failed to cancel login script on modal close:', error);
+        });
+      }
+    };
+  }, []);
+
   // Debounced save function
   const debouncedSave = useCallback(
     async (platform, credentials, fieldName) => {
@@ -213,11 +231,28 @@ const HubspotConnectionModal = ({ isOpen, onClose }) => {
     window.automationAPI.on2FARequest(handle2FARequest);
 
     return () => {
-      // Remove listener when component unmounts
-      if (window.automationAPI && window.automationAPI.on2FARequest) {
-        // ipcRenderer.removeListener is called automatically when component unmounts
-        // but we can explicitly remove if needed
+      // Remove the listener so it doesn't accumulate across re-mounts
+      if (window.automationAPI && window.automationAPI.off2FARequest) {
+        window.automationAPI.off2FARequest(handle2FARequest);
       }
+    };
+  }, [platformId]);
+
+  // Forward Python script debug lines to the browser DevTools console
+  // Open DevTools (Ctrl+Shift+I) and look for [HubSpot Login] lines while logging in
+  useEffect(() => {
+    if (!window.automationAPI?.onLoginDebug) return;
+
+    const handleDebug = (event, data) => {
+      if (data?.platformId === platformId) {
+        console.log(`[HubSpot Login] ${data.line}`);
+      }
+    };
+
+    window.automationAPI.onLoginDebug(handleDebug);
+
+    return () => {
+      window.automationAPI?.offLoginDebug?.(handleDebug);
     };
   }, [platformId]);
 
@@ -295,7 +330,7 @@ const HubspotConnectionModal = ({ isOpen, onClose }) => {
 
       if (result.success) {
         // Update connection status after successful login
-        const response = await updateConnectionStatus(platformId, true, false);
+        const response = await updateConnectionStatus(platformId, true, true);
         if (response.success) {
           setHasChanges(true);
           showSuccess('Login completed successfully.');
@@ -357,10 +392,18 @@ const HubspotConnectionModal = ({ isOpen, onClose }) => {
     return hasStoreCredentials || hasLocalCredentials;
   };
 
-  const isFullyConnected = connection?.isConnected && !connection?.isFirstTimeLogin;
+  const isFullyConnected = connection?.isConnected && connection?.isLoggedIn;
   const isConnected = connection?.isConnected || false;
 
-  const handleModalClose = () => {
+  const handleModalClose = async () => {
+    // Cancel login script if it's running
+    if (isLoading || isSubmitting2FA) {
+      try {
+        await window.automationAPI.cancelLoginScript();
+      } catch (error) {
+        console.error('Failed to cancel login script:', error);
+      }
+    }
     onClose(hasChanges);
   };
 
@@ -397,6 +440,7 @@ const HubspotConnectionModal = ({ isOpen, onClose }) => {
         size="md"
         closeOnOutsideClick={false}
         closeOnEscape={false}
+        showCloseButton={!isLoading && !isSubmitting2FA}
       >
       {isLoadingConnection ? (
         <div className="py-12">
@@ -441,6 +485,12 @@ const HubspotConnectionModal = ({ isOpen, onClose }) => {
               const isPassword = field.type === 'password';
               const showPassword = showPasswords[field.name] || false;
               
+              // When fully connected, only allow API key changes, disable email and password
+              const isFieldDisabled = isFullyConnected 
+                ? (field.name === 'email' || field.name === 'password')
+                : false;
+              const shouldDisableField = isFieldDisabled || isSaving || isLoading;
+              
               return (
                 <div key={field.name}>
                   <div className="flex items-center justify-between mb-2">
@@ -462,7 +512,7 @@ const HubspotConnectionModal = ({ isOpen, onClose }) => {
                       value={formData[field.name] || ''}
                       onChange={(e) => handleInputChange(field.name, e.target.value)}
                       placeholder={field.placeholder}
-                      disabled={isFullyConnected || isSaving || isLoading}
+                      disabled={shouldDisableField}
                       className={`w-full rounded-lg bg-base-background border border-border-muted text-text-primary placeholder-text-muted focus:outline-none focus:ring-2 focus:ring-primary-accent focus:border-transparent transition-all disabled:opacity-50 disabled:cursor-not-allowed ${
                         isPassword ? 'px-4 pr-12 py-2' : 'px-4 py-2'
                       } ${
@@ -569,7 +619,7 @@ const HubspotConnectionModal = ({ isOpen, onClose }) => {
             </div>
           )}
 
-          {!isConnected && !connection?.isFirstTimeLogin && hasApiKeySaved() && (
+          {!isConnected && !connection?.isLoggedIn && hasApiKeySaved() && (
             <div className="p-3 bg-info/10 border border-info/20 rounded-lg">
               <p className="text-sm text-text-secondary">
                 API key saved. Please click Login to complete the setup.
@@ -582,8 +632,8 @@ const HubspotConnectionModal = ({ isOpen, onClose }) => {
             <ButtonPlain
               variant="outline"
               className="flex-1"
-              onClick={() => onClose(hasChanges)}
-              disabled={isLoading || isSaving}
+              onClick={handleModalClose}
+              disabled={isLoading || isSaving || isSubmitting2FA}
             >
               {isFullyConnected ? 'Close' : 'Cancel'}
             </ButtonPlain>

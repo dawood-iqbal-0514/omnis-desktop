@@ -1,13 +1,13 @@
-﻿import React, { useState, useRef, useEffect } from 'react';
+import React, { useState, useRef, useEffect } from 'react';
 import Confetti from 'react-confetti';
 import { ButtonPlain, ButtonIconed } from '../components/Button';
 import { LoaderSmall } from '../components/Loader';
 import { ExecutionPlanCard, ExecutionLogs } from '../components/Chat';
-import { PlatformSelectionModal } from '../components/Modal';
+import { PlatformSelectionModal, HubSpotAIModal } from '../components/Modal';
 import usePlatformStore from '../store/platformStore';
 import { formatTimeLocal12Hour } from '../utils/date';
 
-const Chat = () => {
+const Chat = ({ setActivePage }) => {
   const selectedPlatform = usePlatformStore((state) => state.selectedPlatform);
   const setSelectedPlatform = usePlatformStore((state) => state.setSelectedPlatform);
   const [platformModalOpen, setPlatformModalOpen] = useState(false);
@@ -32,6 +32,9 @@ const Chat = () => {
   const [pendingPlan, setPendingPlan] = useState(null);
   const [showConfetti, setShowConfetti] = useState(false);
   const [windowSize, setWindowSize] = useState({ width: window.innerWidth, height: window.innerHeight });
+  const [showHubSpotAIModal, setShowHubSpotAIModal] = useState(false);
+  const [hubSpotAIQuestion, setHubSpotAIQuestion] = useState('');
+  const [isSubmittingAIResponse, setIsSubmittingAIResponse] = useState(false);
   const messagesEndRef = useRef(null);
   const inputRef = useRef(null);
 
@@ -54,15 +57,55 @@ const Chat = () => {
     scrollToBottom();
   }, [messages]);
 
-  // Check if platform is selected when component mounts or when selectedPlatform changes
+  // Check if platform is selected when component mounts
   useEffect(() => {
     if (!selectedPlatform) {
       setPlatformModalOpen(true);
-    } else {
-      // Update welcome message when platform is selected
-      const welcomeMsg = selectedPlatform
-        ? `Oh great, another human. 🙄 I'm Omnis Assistant. You've selected ${selectedPlatform.name} - because apparently clicking buttons is too hard - What do you want me to automate?`
-        : 'Oh great, another human. 🙄 I\'m Omnis Assistant. What platform are we doing today?';
+    }
+  }, []);
+
+  // Listen for HubSpot AI questions
+  useEffect(() => {
+    if (!window.automationAPI || !window.automationAPI.onHubSpotAIQuestion) {
+      return;
+    }
+
+    const handleHubSpotAIQuestion = (event, data) => {
+      if (data && data.question) {
+        setHubSpotAIQuestion(data.question);
+        setShowHubSpotAIModal(true);
+      }
+    };
+
+    window.automationAPI.onHubSpotAIQuestion(handleHubSpotAIQuestion);
+
+    return () => {
+      // Cleanup listener
+    };
+  }, []);
+
+  const handleHubSpotAIResponse = async (response) => {
+    setIsSubmittingAIResponse(true);
+    try {
+      const result = await window.automationAPI.submitHubSpotAIResponse(response);
+      if (result.success) {
+        setShowHubSpotAIModal(false);
+        setHubSpotAIQuestion('');
+      } else {
+        console.error('Failed to submit HubSpot AI response:', result.error);
+      }
+    } catch (error) {
+      console.error('Error submitting HubSpot AI response:', error);
+    } finally {
+      setIsSubmittingAIResponse(false);
+    }
+  }; // Run only on mount
+
+  // Update welcome message when platform is selected
+  useEffect(() => {
+    if (selectedPlatform) {
+      setPlatformModalOpen(false);
+      const welcomeMsg = `Oh great, another human. 🙄 I'm Omnis Assistant. You've selected ${selectedPlatform.name} - because apparently clicking buttons is too hard - What do you want me to automate?`;
       
       setMessages(prev => prev.map((msg, idx) =>
         idx === 0 && msg.type === 'bot'
@@ -595,6 +638,21 @@ const Chat = () => {
           setSelectedPlatform(platform);
           setPlatformModalOpen(false);
         }}
+        onNavigateToDashboard={() => {
+          setPlatformModalOpen(false);
+          if (setActivePage) {
+            setActivePage('dashboard');
+          }
+        }}
+      />
+
+      {/* HubSpot AI Modal */}
+      <HubSpotAIModal
+        isOpen={showHubSpotAIModal}
+        onClose={() => setShowHubSpotAIModal(false)}
+        onSubmit={handleHubSpotAIResponse}
+        question={hubSpotAIQuestion}
+        isLoading={isSubmittingAIResponse}
       />
     </div>
   );

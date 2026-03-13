@@ -29,7 +29,9 @@ Available HubSpot actions:
 IMPORTANT DISTINCTIONS:
 - "Create a contact" = Create a single contact record (API action: "create_contact")
 - "Create a list of contacts" or "Create a segment" = Create a contact list/segment using HubSpot's AI (Automation action: "list_automation")
+- "Create a workflow" or "workflow" = Create an automated workflow using HubSpot's UI and AI (Automation action: "workflow_creator")
 - When user says "create a list" or "create a segment", they want list_automation, NOT create_contact
+- When user says "create a workflow", they want workflow_creator, NOT create_contact
 - Always check the AVAILABLE AUTOMATION SCRIPTS section below to find the correct actionId for automation tasks
 
 CRITICAL FOR AUTOMATION TASKS:

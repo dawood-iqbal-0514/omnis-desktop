@@ -1,7 +1,7 @@
 ﻿import React, { useEffect } from 'react';
 import useThemeStore from '../../store/themeStore';
 
-const Modal = ({ isOpen, onClose, children, title, size = 'md', closeOnOutsideClick = true, closeOnEscape = true }) => {
+const Modal = ({ isOpen, onClose, children, title, size = 'md', closeOnOutsideClick = true, closeOnEscape = true, showCloseButton = true }) => {
   const theme = useThemeStore((state) => state.theme);
   const isDark = theme === 'dark';
 
@@ -57,24 +57,26 @@ const Modal = ({ isOpen, onClose, children, title, size = 'md', closeOnOutsideCl
         {title && (
           <div className="flex items-center justify-between p-6 border-b border-border-muted">
             <h2 className="text-xl font-semibold text-text-primary">{title}</h2>
-            <button
-              onClick={onClose}
-              className="p-2 hover:bg-[var(--color-base-background)] rounded-lg transition-colors text-text-secondary hover:text-text-primary"
-            >
-              <svg
-                className="w-5 h-5"
-                fill="none"
-                stroke="currentColor"
-                viewBox="0 0 24 24"
+            {showCloseButton && (
+              <button
+                onClick={onClose}
+                className="p-2 hover:bg-[var(--color-base-background)] rounded-lg transition-colors text-text-secondary hover:text-text-primary"
               >
-                <path
-                  strokeLinecap="round"
-                  strokeLinejoin="round"
-                  strokeWidth={2}
-                  d="M6 18L18 6M6 6l12 12"
-                />
-              </svg>
-            </button>
+                <svg
+                  className="w-5 h-5"
+                  fill="none"
+                  stroke="currentColor"
+                  viewBox="0 0 24 24"
+                >
+                  <path
+                    strokeLinecap="round"
+                    strokeLinejoin="round"
+                    strokeWidth={2}
+                    d="M6 18L18 6M6 6l12 12"
+                  />
+                </svg>
+              </button>
+            )}
           </div>
         )}
 

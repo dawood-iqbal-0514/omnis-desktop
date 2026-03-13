@@ -1,285 +1,142 @@
-import hubspotLogo from '@assets/logos/hubspot.png';
-import linkedinLogo from '@assets/logos/linkedin.png';
-import ghlLogo from '@assets/logos/ghl.svg';
-import apolloLogo from '@assets/logos/apollo.png';
-import clayLogo from '@assets/logos/clay.png';
-import upworkLogo from '@assets/logos/upwork.png';
+import hubspotLogo       from '@assets/logos/hubspot.png';
+import linkedinLogo      from '@assets/logos/linkedin.png';
+import ghlLogo           from '@assets/logos/ghl.svg';
+import apolloLogo        from '@assets/logos/apollo.png';
+import clayLogo          from '@assets/logos/clay.png';
+import upworkLogo        from '@assets/logos/upwork.png';
 import activecampaignLogo from '@assets/logos/AC.png';
-import n8nLogo from '@assets/logos/n8n.png';
-import makeLogo from '@assets/logos/make.png';
-import notionLogo from '@assets/logos/notion.png';
-import smartleadLogo from '@assets/logos/smartlead.png';
-import slackLogo from '@assets/logos/slack.png';
-import instantlyLogo from '@assets/logos/instantly.png';
+import n8nLogo           from '@assets/logos/n8n.png';
+import makeLogo          from '@assets/logos/make.png';
+import notionLogo        from '@assets/logos/notion.png';
+import smartleadLogo     from '@assets/logos/smartlead.png';
+import slackLogo         from '@assets/logos/slack.png';
+import instantlyLogo     from '@assets/logos/instantly.png';
 
-export const platformsConfig = {
-  hubspot: {
-    name: 'HubSpot',
-    logo: hubspotLogo,
-    setupType: 'hybrid',
-    steps: [
-      { type: 'apiKey', required: true, field: 'apiKey', label: 'API Key' },
-      { type: 'automation', required: true, trigger: 'login', label: 'Login' },
-    ],
-    fields: [
-      {
-        name: 'apiKey',
-        label: 'API Key',
-        type: 'text',
-        placeholder: 'Enter your HubSpot API key',
-        required: true,
-      },
-      {
-        name: 'email',
-        label: 'Email Address',
-        type: 'email',
-        placeholder: 'your@example.com',
-        required: true,
-      },
-      {
-        name: 'password',
-        label: 'Password',
-        type: 'password',
-        placeholder: 'Enter your HubSpot password',
-        required: true,
-      },
-    ],
-    buttons: {
-      connect: { label: 'Connect', action: 'openConnection' },
-      login: { label: 'Login', action: 'triggerAutomation' },
-      connected: { label: 'Connected', action: 'viewDetails' },
-    },
-  },
-  linkedin: {
-    name: 'LinkedIn',
-    logo: linkedinLogo,
-    setupType: 'oauth',
-    steps: [{ type: 'oauth', required: true }],
-    fields: [],
-    buttons: {
-      connect: { label: 'Connect', action: 'openConnection' },
-      connected: { label: 'Connected', action: 'viewDetails' },
-    },
-  },
-  ghl: {
-    name: 'GHL (GoHighLevel)',
-    logo: ghlLogo,
-    setupType: 'apiKey',
-    steps: [{ type: 'apiKey', required: true, field: 'apiKey', label: 'API Key' }],
-    fields: [
-      {
-        name: 'apiKey',
-        label: 'API Key',
-        type: 'text',
-        placeholder: 'Enter your GHL API key',
-        required: true,
-      },
-    ],
-    buttons: {
-      connect: { label: 'Connect', action: 'openConnection' },
-      connected: { label: 'Connected', action: 'viewDetails' },
-    },
-  },
-  apollo: {
-    name: 'Apollo',
-    logo: apolloLogo,
-    setupType: 'apiKey',
-    steps: [{ type: 'apiKey', required: true, field: 'apiKey', label: 'API Key' }],
-    fields: [
-      {
-        name: 'apiKey',
-        label: 'API Key',
-        type: 'text',
-        placeholder: 'Enter your Apollo API key',
-        required: true,
-      },
-    ],
-    buttons: {
-      connect: { label: 'Connect', action: 'openConnection' },
-      connected: { label: 'Connected', action: 'viewDetails' },
-    },
-  },
-  clay: {
-    name: 'Clay',
-    logo: clayLogo,
-    setupType: 'apiKey',
-    steps: [{ type: 'apiKey', required: true, field: 'apiKey', label: 'API Key' }],
-    fields: [
-      {
-        name: 'apiKey',
-        label: 'API Key',
-        type: 'text',
-        placeholder: 'Enter your Clay API key',
-        required: true,
-      },
-    ],
-    buttons: {
-      connect: { label: 'Connect', action: 'openConnection' },
-      connected: { label: 'Connected', action: 'viewDetails' },
-    },
-  },
-  upwork: {
-    name: 'Upwork',
-    logo: upworkLogo,
-    setupType: 'automation',
-    steps: [{ type: 'automation', required: true, trigger: 'login', label: 'Login' }],
-    fields: [],
-    buttons: {
-      connect: { label: 'Connect', action: 'openConnection' },
-      login: { label: 'Login', action: 'triggerAutomation' },
-      connected: { label: 'Connected', action: 'viewDetails' },
-    },
-  },
-  activecampaign: {
-    name: 'ActiveCampaign',
-    logo: activecampaignLogo,
-    setupType: 'apiKey',
-    steps: [{ type: 'apiKey', required: true, field: 'apiKey', label: 'API Key' }],
-    fields: [
-      {
-        name: 'apiKey',
-        label: 'API Key',
-        type: 'text',
-        placeholder: 'Enter your ActiveCampaign API key',
-        required: true,
-      },
-    ],
-    buttons: {
-      connect: { label: 'Connect', action: 'openConnection' },
-      connected: { label: 'Connected', action: 'viewDetails' },
-    },
-  },
-  n8n: {
-    name: 'n8n',
-    logo: n8nLogo,
-    setupType: 'apiKey',
-    steps: [{ type: 'apiKey', required: true, field: 'apiKey', label: 'API Key' }],
-    fields: [
-      {
-        name: 'apiKey',
-        label: 'API Key',
-        type: 'text',
-        placeholder: 'Enter your n8n API key',
-        required: true,
-      },
-    ],
-    buttons: {
-      connect: { label: 'Connect', action: 'openConnection' },
-      connected: { label: 'Connected', action: 'viewDetails' },
-    },
-  },
-  make: {
-    name: 'Make.com',
-    logo: makeLogo,
-    setupType: 'apiKey',
-    steps: [{ type: 'apiKey', required: true, field: 'apiKey', label: 'API Key' }],
-    fields: [
-      {
-        name: 'apiKey',
-        label: 'API Key',
-        type: 'text',
-        placeholder: 'Enter your Make.com API key',
-        required: true,
-      },
-    ],
-    buttons: {
-      connect: { label: 'Connect', action: 'openConnection' },
-      connected: { label: 'Connected', action: 'viewDetails' },
-    },
-  },
-  notion: {
-    name: 'Notion',
-    logo: notionLogo,
-    setupType: 'oauth',
-    steps: [{ type: 'oauth', required: true }],
-    fields: [],
-    buttons: {
-      connect: { label: 'Connect', action: 'openConnection' },
-      connected: { label: 'Connected', action: 'viewDetails' },
-    },
-  },
-  smartlead: {
-    name: 'Smartlead',
-    logo: smartleadLogo,
-    setupType: 'apiKey',
-    steps: [{ type: 'apiKey', required: true, field: 'apiKey', label: 'API Key' }],
-    fields: [
-      {
-        name: 'apiKey',
-        label: 'API Key',
-        type: 'text',
-        placeholder: 'Enter your Smartlead API key',
-        required: true,
-      },
-    ],
-    buttons: {
-      connect: { label: 'Connect', action: 'openConnection' },
-      connected: { label: 'Connected', action: 'viewDetails' },
-    },
-  },
-  slack: {
-    name: 'Slack',
-    logo: slackLogo,
-    setupType: 'oauth',
-    steps: [{ type: 'oauth', required: true }],
-    fields: [],
-    buttons: {
-      connect: { label: 'Connect', action: 'openConnection' },
-      connected: { label: 'Connected', action: 'viewDetails' },
-    },
-  },
-  instantly: {
-    name: 'Instantly',
-    logo: instantlyLogo,
-    setupType: 'apiKey',
-    steps: [{ type: 'apiKey', required: true, field: 'apiKey', label: 'API Key' }],
-    fields: [
-      {
-        name: 'apiKey',
-        label: 'API Key',
-        type: 'text',
-        placeholder: 'Enter your Instantly API key',
-        required: true,
-      },
-    ],
-    buttons: {
-      connect: { label: 'Connect', action: 'openConnection' },
-      connected: { label: 'Connected', action: 'viewDetails' },
-    },
-  },
+// ─── Local logo map (logos stay in frontend — can't come from backend) ────────
+const LOGOS = {
+  hubspot:        hubspotLogo,
+  linkedin:       linkedinLogo,
+  ghl:            ghlLogo,
+  apollo:         apolloLogo,
+  clay:           clayLogo,
+  upwork:         upworkLogo,
+  activecampaign: activecampaignLogo,
+  n8n:            n8nLogo,
+  make:           makeLogo,
+  notion:         notionLogo,
+  smartlead:      smartleadLogo,
+  slack:          slackLogo,
+  instantly:      instantlyLogo,
 };
 
-export const getPlatformConfig = (platformName) => {
-  const key = platformName?.toLowerCase().replace(/\s+/g, '');
-  return platformsConfig[key] || null;
+// ─── Cached config from backend ───────────────────────────────────────────────
+let _cachedConfig = null;
+
+/**
+ * Fetches platform config from backend and merges with local logos.
+ * Called once on app load — result is cached for the session.
+ * Adding a new platform = update backend only. No app rebuild needed.
+ */
+export const fetchPlatformConfig = async () => {
+  if (_cachedConfig) return _cachedConfig;
+
+  try {
+    const { platformAPI } = await import('../services/api/platformConnections');
+    const response = await platformAPI.getPlatformConfig();
+
+    if (response?.success && response?.data) {
+      // Merge backend config with local logos
+      _cachedConfig = Object.entries(response.data).reduce((acc, [id, config]) => {
+        acc[id] = { ...config, logo: LOGOS[id] || null };
+        return acc;
+      }, {});
+      return _cachedConfig;
+    }
+  } catch (error) {
+    console.warn('⚠️ Failed to fetch platform config from backend, using fallback:', error.message);
+  }
+
+  // ─── Fallback: local config if backend is unreachable ─────────────────────
+  _cachedConfig = getFallbackConfig();
+  return _cachedConfig;
+};
+
+/**
+ * Sync getter — returns cached config or fallback.
+ * Use fetchPlatformConfig() on app load, then this anywhere in the app.
+ */
+export const getPlatformConfig = (platformId) => {
+  const config = _cachedConfig || getFallbackConfig();
+  const key = platformId?.toLowerCase().replace(/\s+/g, '');
+  return config[key] ? { ...config[key], id: key } : null;
 };
 
 export const getAllPlatforms = () => {
-  return Object.entries(platformsConfig).map(([key, config]) => ({
-    id: key,
-    ...config,
-  }));
+  const config = _cachedConfig || getFallbackConfig();
+  return Object.entries(config).map(([id, data]) => ({ id, ...data }));
 };
 
-export const platformStatusList = [
-  { platform: 'hubspot', status: true },
-  { platform: 'linkedin', status: false },
-  { platform: 'ghl', status: false },
-  { platform: 'apollo', status: false },
-  { platform: 'clay', status: false },
-  { platform: 'upwork', status: false },
-  { platform: 'activecampaign', status: false },
-  { platform: 'n8n', status: false },
-  { platform: 'make', status: false },
-  { platform: 'notion', status: false },
-  { platform: 'smartlead', status: false },
-  { platform: 'slack', status: false },
-  { platform: 'instantly', status: false },
-];
-
-// Helper function to check if a platform is enabled
 export const isPlatformEnabled = (platformId) => {
-  const status = platformStatusList.find((p) => p.platform === platformId?.toLowerCase());
-  return status?.status || false;
+  const config = _cachedConfig || getFallbackConfig();
+  return config[platformId?.toLowerCase()]?.enabled || false;
 };
 
+// ─── Fallback config (used if backend unreachable) ────────────────────────────
+const getFallbackConfig = () => ({
+  hubspot: {
+    name: 'HubSpot', logo: hubspotLogo, setupType: 'hybrid', enabled: true,
+    fields: [
+      { name: 'apiKey',   label: 'API Key',       type: 'text',     placeholder: 'Enter your HubSpot API key',  required: true },
+      { name: 'email',    label: 'Email Address', type: 'email',    placeholder: 'your@example.com',            required: true },
+      { name: 'password', label: 'Password',      type: 'password', placeholder: 'Enter your HubSpot password', required: true },
+    ],
+  },
+  linkedin: {
+    name: 'LinkedIn', logo: linkedinLogo, setupType: 'automation', enabled: true,
+    fields: [],
+  },
+  ghl: {
+    name: 'GHL (GoHighLevel)', logo: ghlLogo, setupType: 'apiKey', enabled: false,
+    fields: [{ name: 'apiKey', label: 'API Key', type: 'text', placeholder: 'Enter your GHL API key', required: true }],
+  },
+  apollo: {
+    name: 'Apollo', logo: apolloLogo, setupType: 'apiKey', enabled: false,
+    fields: [{ name: 'apiKey', label: 'API Key', type: 'text', placeholder: 'Enter your Apollo API key', required: true }],
+  },
+  clay: {
+    name: 'Clay', logo: clayLogo, setupType: 'apiKey', enabled: false,
+    fields: [{ name: 'apiKey', label: 'API Key', type: 'text', placeholder: 'Enter your Clay API key', required: true }],
+  },
+  upwork: {
+    name: 'Upwork', logo: upworkLogo, setupType: 'automation', enabled: false,
+    fields: [],
+  },
+  activecampaign: {
+    name: 'ActiveCampaign', logo: activecampaignLogo, setupType: 'apiKey', enabled: false,
+    fields: [{ name: 'apiKey', label: 'API Key', type: 'text', placeholder: 'Enter your ActiveCampaign API key', required: true }],
+  },
+  n8n: {
+    name: 'n8n', logo: n8nLogo, setupType: 'apiKey', enabled: false,
+    fields: [{ name: 'apiKey', label: 'API Key', type: 'text', placeholder: 'Enter your n8n API key', required: true }],
+  },
+  make: {
+    name: 'Make.com', logo: makeLogo, setupType: 'apiKey', enabled: false,
+    fields: [{ name: 'apiKey', label: 'API Key', type: 'text', placeholder: 'Enter your Make.com API key', required: true }],
+  },
+  notion: {
+    name: 'Notion', logo: notionLogo, setupType: 'apiKey', enabled: false,
+    fields: [{ name: 'apiKey', label: 'API Key', type: 'text', placeholder: 'Enter your Notion API key', required: true }],
+  },
+  smartlead: {
+    name: 'Smartlead', logo: smartleadLogo, setupType: 'apiKey', enabled: false,
+    fields: [{ name: 'apiKey', label: 'API Key', type: 'text', placeholder: 'Enter your Smartlead API key', required: true }],
+  },
+  slack: {
+    name: 'Slack', logo: slackLogo, setupType: 'apiKey', enabled: false,
+    fields: [{ name: 'apiKey', label: 'API Key', type: 'text', placeholder: 'Enter your Slack API key', required: true }],
+  },
+  instantly: {
+    name: 'Instantly', logo: instantlyLogo, setupType: 'apiKey', enabled: false,
+    fields: [{ name: 'apiKey', label: 'API Key', type: 'text', placeholder: 'Enter your Instantly API key', required: true }],
+  },
+});

@@ -4,7 +4,7 @@ class CerebrasService {
   constructor() {
     this.apiKey = null;
     this.baseURL = 'https://api.cerebras.ai/v1';
-    this.defaultModel = 'llama-3.1-8b-instruct';
+    this.defaultModel = 'llama3.1-8b'; // Production model - reliable access (see inference-docs.cerebras.ai/models/overview)
     this.chatHistory = [];
   }
 

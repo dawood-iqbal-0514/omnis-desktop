@@ -8,7 +8,7 @@ class InfoGatherer {
     try {
       const promptPath = path.join(
         __dirname,
-        '../../../automation/platforms',
+        '../../../../automation/platforms',
         platformId,
         'prompts',
         'gatherer-prompt.txt'
@@ -213,9 +213,47 @@ IMPORTANT RULES:
     let action = null;
     const params = {};
 
-    // Look for list/segment creation keywords FIRST (more specific)
+    // Look for workflow creation keywords FIRST (most specific)
     const fullConversation = userMessages.join(' ').toLowerCase();
-    if (fullConversation.includes('list') || fullConversation.includes('segment')) {
+    if (fullConversation.includes('workflow')) {
+      // User wants to create a workflow
+      action = 'workflow_creator';
+      
+      // Extract workflow details
+      // Trigger: when a contact is created, when a deal is created, etc.
+      if (fullConversation.includes('contact') && (fullConversation.includes('create') || fullConversation.includes('new'))) {
+        params.trigger = 'new_contact_created';
+      } else if (fullConversation.includes('deal') && (fullConversation.includes('create') || fullConversation.includes('new'))) {
+        params.trigger = 'new_deal_created';
+      }
+      
+      // Extract email recipient
+      const emailMatch = fullConversation.match(/([a-z0-9._%+-]+@[a-z0-9.-]+\.[a-z]{2,})/i);
+      if (emailMatch) {
+        params.email = emailMatch[1];
+      }
+      
+      // Extract subject
+      const subjectMatch = fullConversation.match(/subject\s+(?:is|as|:)?\s*["']?([^"']+)["']?/i);
+      if (subjectMatch && subjectMatch[1]) {
+        params.subject = subjectMatch[1].trim();
+      }
+      
+      // Extract body
+      const bodyMatch = fullConversation.match(/body\s+(?:is|as|:)?\s*["']?([^"']+)["']?/i);
+      if (bodyMatch && bodyMatch[1]) {
+        params.body = bodyMatch[1].trim();
+      }
+      
+      // If subject and body are the same (common pattern)
+      if (!params.subject && !params.body) {
+        const sameMatch = fullConversation.match(/subject\s+and\s+body\s+(?:is|as|:)?\s*["']?([^"']+)["']?/i);
+        if (sameMatch && sameMatch[1]) {
+          params.subject = sameMatch[1].trim();
+          params.body = sameMatch[1].trim();
+        }
+      }
+    } else if (fullConversation.includes('list') || fullConversation.includes('segment')) {
       // User wants to create a list/segment
       action = 'list_automation';
       
@@ -266,7 +304,25 @@ IMPORTANT RULES:
     // Always create at least one action, even if params are missing
     const actions = [];
     
-    if (action === 'list_automation') {
+    if (action === 'workflow_creator') {
+      // Handle workflow creation
+      let description = 'Create workflow';
+      if (params.trigger) {
+        description += `: ${params.trigger.replace(/_/g, ' ')}`;
+      }
+      if (params.email) {
+        description += `, send email to ${params.email}`;
+      }
+      if (params.subject || params.body) {
+        description += ` with subject "${params.subject || params.body}" and body "${params.body || params.subject}"`;
+      }
+      
+      actions.push({
+        actionId: 'workflow_creator',
+        description: description,
+        parameters: params
+      });
+    } else if (action === 'list_automation') {
       // Handle list/segment creation
       actions.push({
         actionId: 'list_automation',

@@ -13,7 +13,7 @@ class Executor {
     try {
       const promptPath = path.join(
         __dirname,
-        '../../../automation/platforms',
+        '../../../../automation/platforms',
         platformId,
         'prompts',
         'executor-prompt.txt'

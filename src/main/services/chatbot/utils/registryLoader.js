@@ -16,7 +16,7 @@ class RegistryLoader {
     try {
       const registryPath = path.join(
         __dirname,
-        '../../../automation/platforms',
+        '../../../../automation/platforms',
         platformId,
         'registry',
         'api-actions.json'
@@ -48,7 +48,7 @@ class RegistryLoader {
     try {
       const registryPath = path.join(
         __dirname,
-        '../../../automation/platforms',
+        '../../../../automation/platforms',
         platformId,
         'registry',
         'automation-scripts.json'

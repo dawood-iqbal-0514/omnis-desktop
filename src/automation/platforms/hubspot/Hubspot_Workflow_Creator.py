@@ -1,4 +1,5 @@
 import time
+import sys
 from pathlib import Path
 from DrissionPage import ChromiumPage, ChromiumOptions
 from DrissionPage.common import Keys
@@ -129,22 +130,34 @@ def main():
                 for iteration in range(1, 4):
                     print(f"\n--- Iteration {iteration}/3 ---")
                     try:
-                        user_input = input("Your response: ").strip()
-                        
-                        if not user_input:
-                            print("Skipping empty response...")
-                            continue
-
-                        print(f"✓ Sending your response to AI...")
-                        type_in_ai_prompt(page, user_input)
-                        
-                        print("[LISTENING] Waiting for response...\n")
+                        # Wait for next AI response/question
+                        print("[LISTENING] Waiting for HubSpot AI response...\n")
                         time.sleep(10)
                         ai_response = get_response(page)
+                        
                         if ai_response:
-                            print(f"\n📌 AI: {ai_response}\n")
+                            print(f"\n📌 HubSpot AI: {ai_response}\n")
+                            
+                            # Output marker to stdout so Node.js can detect it and show modal
+                            print(f"[HUBSPOT_AI_QUESTION]{ai_response}", flush=True)
+                            sys.stdout.flush()
+                            
+                            # Read user response from stdin (provided by Node.js)
+                            try:
+                                user_input = sys.stdin.readline().strip()
+                                
+                                if not user_input:
+                                    print("No response provided, skipping...", file=sys.stderr)
+                                    continue
+
+                                print(f"✓ Sending your response to HubSpot AI...")
+                                type_in_ai_prompt(page, user_input)
+                            except Exception as e:
+                                print(f"Error reading user input: {e}", file=sys.stderr)
+                                break
                         else:
-                            print("No response received from AI")
+                            print("No response received from HubSpot AI")
+                            break
                     except KeyboardInterrupt:
                         print("\n\nConversation stopped by user.")
                         break

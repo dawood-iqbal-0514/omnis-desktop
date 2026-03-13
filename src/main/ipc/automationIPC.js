@@ -3,6 +3,8 @@
 let orchestrator = null;
 let loginExecutor = null;
 let LoginScriptExecutor = null;
+let automationScriptExecutor = null;
+let AutomationScriptExecutor = null;
 
 function getOrchestrator() {
   if (!orchestrator) {
@@ -70,10 +72,11 @@ function setupAutomationIPC(mainWindow) {
       const scriptName = task.script || task.automationConfig?.script;
       const actionId = task.action || task.actionId;
       
+      let foundScript = null;
+      let scriptFound = false;
+      
       if (scriptName || actionId) {
         const automationRegistry = RegistryLoader.loadAutomationScripts(task.platform);
-        let scriptFound = false;
-        let foundScript = null;
         
         // Check by script name first (if provided)
         if (scriptName) {
@@ -104,21 +107,48 @@ function setupAutomationIPC(mainWindow) {
         }
       }
 
-      const result = await getOrchestrator().executeTask(task, {
-        onProgress: (progress) => {
-          mainWindow.webContents.send('automation:task-progress', {
-            taskId: task.id,
-            progress,
-          });
-        },
-      });
+      // Check if this is a Python script that needs direct execution
+      const isPythonScript = foundScript && foundScript.name && foundScript.name.endsWith('.py');
+      
+      if (isPythonScript && foundScript) {
+        // Use AutomationScriptExecutor for Python scripts
+        if (!AutomationScriptExecutor) {
+          AutomationScriptExecutor = require('../services/automationScriptExecutor').AutomationScriptExecutor;
+        }
+        if (!automationScriptExecutor) {
+          automationScriptExecutor = new AutomationScriptExecutor(mainWindow);
+        }
+        
+        const result = await automationScriptExecutor.executeScript(
+          task.platform,
+          foundScript.name,
+          task.parameters || {}
+        );
+        
+        mainWindow.webContents.send('automation:task-complete', {
+          taskId: task.id,
+          result,
+        });
+        
+        return { success: true, result };
+      } else {
+        // Use orchestrator for other tasks
+        const result = await getOrchestrator().executeTask(task, {
+          onProgress: (progress) => {
+            mainWindow.webContents.send('automation:task-progress', {
+              taskId: task.id,
+              progress,
+            });
+          },
+        });
 
-      mainWindow.webContents.send('automation:task-complete', {
-        taskId: task.id,
-        result,
-      });
+        mainWindow.webContents.send('automation:task-complete', {
+          taskId: task.id,
+          result,
+        });
 
-      return { success: true, result };
+        return { success: true, result };
+      }
     } catch (error) {
       console.error('Task execution failed:', error);
       mainWindow.webContents.send('automation:task-error', {
@@ -180,6 +210,37 @@ function setupAutomationIPC(mainWindow) {
       return { success: submitted };
     } catch (error) {
       console.error('Failed to submit 2FA token:', error);
+      return { success: false, error: error.message };
+    }
+  });
+
+  // Cancel login script
+  ipcMain.handle('automation:cancel-login-script', async (event) => {
+    try {
+      if (!loginExecutor) {
+        return { success: false, error: 'No active login process' };
+      }
+      loginExecutor.cancel();
+      return { success: true };
+    } catch (error) {
+      console.error('Failed to cancel login script:', error);
+      return { success: false, error: error.message };
+    }
+  });
+
+  // Submit HubSpot AI response
+  ipcMain.handle('automation:submit-hubspot-ai-response', async (event, response) => {
+    try {
+      if (!AutomationScriptExecutor) {
+        AutomationScriptExecutor = require('../services/automationScriptExecutor').AutomationScriptExecutor;
+      }
+      if (!automationScriptExecutor) {
+        return { success: false, error: 'No active automation script process' };
+      }
+      const submitted = automationScriptExecutor.submitAIResponse(response);
+      return { success: submitted };
+    } catch (error) {
+      console.error('Failed to submit HubSpot AI response:', error);
       return { success: false, error: error.message };
     }
   });

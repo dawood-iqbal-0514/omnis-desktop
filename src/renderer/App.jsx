@@ -1,4 +1,4 @@
-﻿import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect } from 'react';
 import { Toaster } from 'react-hot-toast';
 import { Sidebar } from './components/Layout';
 import Dashboard from './pages/Dashboard';
@@ -12,8 +12,10 @@ import ResetPassword from './pages/ResetPassword';
 import EmailVerification from './pages/EmailVerification';
 import useThemeStore from './store/themeStore';
 import useAuthStore from './store/authStore';
+import { setOn401 } from './services/api';
 import { isProtectedRoute, isPublicRoute } from './middleware/authGuard';
 import { toasterConfig } from './config/toaster.config';
+import { fetchPlatformConfig } from './config/platforms.config';
 
 const App = () => {
   const [activePage, setActivePage] = useState('dashboard');
@@ -29,11 +31,25 @@ const App = () => {
   const isAuthenticated = useAuthStore((state) => state.isAuthenticated);
   const initializeAuth = useAuthStore((state) => state.initializeAuth);
 
-  // Initialize auth state on app load
   useEffect(() => {
     initializeAuth();
+    // Fetch platform config from backend on app load so it's cached for the session
+    fetchPlatformConfig().catch(() => {
+      // Silent fail — fallback config is used automatically
+    });
     setIsInitialized(true);
   }, [initializeAuth]);
+
+  useEffect(() => {
+    setOn401(() => {
+      useAuthStore.getState().logout();
+      setActivePage('signin');
+      setShowSignUp(false);
+      setShowForgotPassword(false);
+      setShowResetPassword(false);
+    });
+    return () => setOn401(null);
+  }, []);
 
   // Protect routes - redirect to signin if not authenticated
   useEffect(() => {
@@ -76,7 +92,7 @@ const App = () => {
       // case 'platforms':
       //   return <Platforms />;
       case 'chat':
-        return <Chat />;
+        return <Chat setActivePage={setActivePage} />;
       case 'settings':
         return <Settings />;
       default:

@@ -79,14 +79,14 @@ const usePlatformStore = create((set, get) => ({
     }
   },
 
-  updateConnectionStatus: async (platform, isConnected, isFirstTimeLogin) => {
+  updateConnectionStatus: async (platform, isConnected, isLoggedIn) => {
     // Don't set global loading - modal has its own loading state
     set({ error: null });
     try {
       const response = await platformAPI.updateConnectionStatus(
         platform,
         isConnected,
-        isFirstTimeLogin
+        isLoggedIn
       );
       if (response.success) {
         // Update connections array - create new array reference for Zustand reactivity

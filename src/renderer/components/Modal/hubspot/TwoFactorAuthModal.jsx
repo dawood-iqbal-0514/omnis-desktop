@@ -1,6 +1,6 @@
 import React, { useState } from 'react';
-import Modal from './Modal';
-import { ButtonPlain } from '../Button';
+import Modal from '../Modal';
+import { ButtonPlain } from '../../Button';
 
 const TwoFactorAuthModal = ({ isOpen, onClose, onSubmit, isLoading = false }) => {
   const [token, setToken] = useState('');
@@ -40,6 +40,7 @@ const TwoFactorAuthModal = ({ isOpen, onClose, onSubmit, isLoading = false }) =>
       size="md"
       closeOnOutsideClick={false}
       closeOnEscape={false}
+      showCloseButton={false}
     >
       <form onSubmit={handleSubmit} className="space-y-4">
         <div>
@@ -62,7 +63,7 @@ const TwoFactorAuthModal = ({ isOpen, onClose, onSubmit, isLoading = false }) =>
             }}
             placeholder="Enter 2FA code"
             disabled={isLoading}
-            className="w-full px-4 py-3 rounded-lg bg-base-background border border-border-muted text-text-primary placeholder-text-muted focus:outline-none focus:ring-2 focus:ring-primary-accent focus:border-transparent transition-all disabled:opacity-50 disabled:cursor-not-allowed text-center text-2xl tracking-widest font-mono"
+            className="w-full px-4 py-3 rounded-lg bg-base-background border border-border-muted text-text-primary placeholder:text-lg placeholder:text-text-muted focus:outline-none focus:ring-2 focus:ring-primary-accent focus:border-transparent transition-all disabled:opacity-50 disabled:cursor-not-allowed text-center text-2xl tracking-widest font-mono"
             maxLength={10}
             autoFocus
           />
@@ -75,15 +76,6 @@ const TwoFactorAuthModal = ({ isOpen, onClose, onSubmit, isLoading = false }) =>
         )}
 
         <div className="flex gap-3 pt-2">
-          <ButtonPlain
-            type="button"
-            variant="outline"
-            className="flex-1"
-            onClick={handleClose}
-            disabled={isLoading}
-          >
-            Cancel
-          </ButtonPlain>
           <ButtonPlain
             type="submit"
             variant="primary"

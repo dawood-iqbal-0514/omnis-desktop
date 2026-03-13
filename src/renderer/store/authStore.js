@@ -1,4 +1,4 @@
-﻿import { create } from 'zustand';
+import { create } from 'zustand';
 import { authAPI, emailVerificationAPI, passwordResetAPI } from '../services/api';
 
 const useAuthStore = create((set) => ({
@@ -16,6 +16,9 @@ const useAuthStore = create((set) => ({
   
   logout: () => {
     authAPI.signout();
+    if (typeof window !== 'undefined') {
+      localStorage.removeItem('omnis-reach-user');
+    }
     set({ 
       isAuthenticated: false, 
       user: null,

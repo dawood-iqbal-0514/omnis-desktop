@@ -52,15 +52,28 @@ class LoginScriptExecutor {
 
       let stdout = '';
       let stderr = '';
+      let twoFAHandled = false; // Prevent double-triggering if data arrives in multiple chunks
 
       // Monitor stdout for 2FA request marker
       pythonProcess.stdout.on('data', (data) => {
         const output = data.toString();
-        stdout += output;
+        stdout += output; // Accumulate — detection uses full stdout so split chunks can't miss it
         console.log(`[Login Script STDOUT] ${output}`);
 
-        // Check for 2FA request marker
-        if (output.includes('[2FA_REQUEST]') || output.includes('Enter the OTP')) {
+        // Forward every [DEBUG] line to the renderer DevTools console
+        // so the user can see exactly what Python is doing without opening main-process logs
+        output.split('\n').forEach((line) => {
+          if (line.startsWith('[DEBUG]') || line.startsWith('[SUCCESS]') || line.startsWith('[ERROR]') || line.startsWith('[2FA_REQUEST]')) {
+            this.mainWindow.webContents.send('automation:login-debug', { platformId, line: line.trim() });
+          }
+        });
+
+        // Check for 2FA request marker using accumulated stdout (not just current chunk)
+        // This prevents missing the marker when Python's output arrives in split chunks
+        if (!twoFAHandled && (stdout.includes('[2FA_REQUEST]') || stdout.includes('Enter the OTP sent to your email'))) {
+          twoFAHandled = true;
+          console.log('[Login Script] 2FA request detected — sending modal prompt to renderer');
+
           // Send 2FA request to frontend
           this.mainWindow.webContents.send('automation:2fa-request', {
             platformId,
@@ -69,13 +82,22 @@ class LoginScriptExecutor {
 
           // Wait for token from frontend
           this.waitFor2FAToken().then((token) => {
-            if (token && pythonProcess.stdin.writable) {
-              pythonProcess.stdin.write(token + '\n');
+            if (token) {
+              if (pythonProcess.stdin.writable) {
+                console.log('[Login Script] Writing 2FA token to Python stdin');
+                pythonProcess.stdin.write(token + '\n');
+              } else {
+                console.error('[Login Script] Cannot write 2FA token — stdin is not writable (process may have exited)');
+                reject(new Error('2FA token submission failed: browser session closed unexpectedly'));
+              }
+            } else {
+              console.error('[Login Script] Received empty 2FA token');
+              reject(new Error('2FA token was empty'));
             }
           }).catch((error) => {
-            console.error('Error getting 2FA token:', error);
+            console.error('[Login Script] Error waiting for 2FA token:', error);
             pythonProcess.kill();
-            reject(new Error('2FA token input cancelled or failed'));
+            reject(new Error('2FA token input cancelled or timed out'));
           });
         }
       });
@@ -175,15 +197,19 @@ class LoginScriptExecutor {
 
   submit2FAToken(token) {
     if (this.tokenResolver) {
+      console.log('[Login Script] submit2FAToken called — resolving tokenResolver with token');
       this.tokenResolver.resolve(token);
       this.tokenResolver = null;
       return true;
     }
+    console.error('[Login Script] submit2FAToken called but tokenResolver is null — no active 2FA request waiting');
     return false;
   }
 
   cancel() {
+    console.log('[Login Script] cancel() called —', new Error('cancel trace').stack);
     if (this.currentProcess) {
+      console.log('[Login Script] Killing Python process from cancel()');
       this.currentProcess.kill();
       this.currentProcess = null;
     }

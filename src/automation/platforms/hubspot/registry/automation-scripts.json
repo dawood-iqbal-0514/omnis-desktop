@@ -3,7 +3,7 @@
     {
       "name": "Hubspot_Workflow_Creator.py",
       "actionId": "workflow_creator",
-      "description": "Creates workflows using the HubSpot UI and AI"
+      "description": "Creates workflows using the HubSpot UI and Hubspot AI by talking to it"
     },
     {
       "name": "Hubspot_Orchestrator.py",
