@@ -57,45 +57,36 @@ class LoginScriptExecutor {
       // Monitor stdout for 2FA request marker
       pythonProcess.stdout.on('data', (data) => {
         const output = data.toString();
-        stdout += output; // Accumulate — detection uses full stdout so split chunks can't miss it
-        console.log(`[Login Script STDOUT] ${output}`);
+        stdout += output;
 
-        // Forward every [DEBUG] line to the renderer DevTools console
-        // so the user can see exactly what Python is doing without opening main-process logs
-        output.split('\n').forEach((line) => {
-          if (line.startsWith('[DEBUG]') || line.startsWith('[SUCCESS]') || line.startsWith('[ERROR]') || line.startsWith('[2FA_REQUEST]')) {
-            this.mainWindow.webContents.send('automation:login-debug', { platformId, line: line.trim() });
-          }
-        });
-
-        // Check for 2FA request marker using accumulated stdout (not just current chunk)
-        // This prevents missing the marker when Python's output arrives in split chunks
-        if (!twoFAHandled && (stdout.includes('[2FA_REQUEST]') || stdout.includes('Enter the OTP sent to your email'))) {
+        // Detect [2FA_REQUEST] using accumulated stdout so split chunks can't miss it
+        if (!twoFAHandled && stdout.includes('[2FA_REQUEST]')) {
           twoFAHandled = true;
-          console.log('[Login Script] 2FA request detected — sending modal prompt to renderer');
 
-          // Send 2FA request to frontend
+          // Extract the page message text after the marker
+          const marker = '[2FA_REQUEST]';
+          const markerIdx = stdout.indexOf(marker);
+          let pageMessage = '';
+          if (markerIdx >= 0) {
+            pageMessage = stdout.substring(markerIdx + marker.length).split('\n')[0].trim();
+          }
+
+          // Send 2FA request to frontend with the actual page message
           this.mainWindow.webContents.send('automation:2fa-request', {
             platformId,
-            message: 'HubSpot has sent a 2FA code to your email. Please enter it below.',
+            message: pageMessage || 'Enter the verification code sent to your email.',
           });
 
           // Wait for token from frontend
           this.waitFor2FAToken().then((token) => {
-            if (token) {
-              if (pythonProcess.stdin.writable) {
-                console.log('[Login Script] Writing 2FA token to Python stdin');
-                pythonProcess.stdin.write(token + '\n');
-              } else {
-                console.error('[Login Script] Cannot write 2FA token — stdin is not writable (process may have exited)');
-                reject(new Error('2FA token submission failed: browser session closed unexpectedly'));
-              }
+            if (token && pythonProcess.stdin.writable) {
+              pythonProcess.stdin.write(token + '\n');
+            } else if (token) {
+              reject(new Error('2FA token submission failed: browser session closed unexpectedly'));
             } else {
-              console.error('[Login Script] Received empty 2FA token');
               reject(new Error('2FA token was empty'));
             }
           }).catch((error) => {
-            console.error('[Login Script] Error waiting for 2FA token:', error);
             pythonProcess.kill();
             reject(new Error('2FA token input cancelled or timed out'));
           });
@@ -103,18 +94,11 @@ class LoginScriptExecutor {
       });
 
       pythonProcess.stderr.on('data', (data) => {
-        const error = data.toString();
-        stderr += error;
-        console.error(`[Login Script Error] ${error}`);
-        // Also log to stdout for visibility
-        console.log(`[STDERR] ${error}`);
+        stderr += data.toString();
       });
 
       pythonProcess.on('close', (code) => {
         this.currentProcess = null;
-        console.log(`[Login Script] Process exited with code: ${code}`);
-        console.log(`[Login Script] STDOUT: ${stdout}`);
-        console.log(`[Login Script] STDERR: ${stderr}`);
         
         if (code === 0) {
           resolve({ success: true, stdout, stderr });
@@ -169,7 +153,6 @@ class LoginScriptExecutor {
             }
           }
           
-          console.error(`[Login Script] Final error message: ${errorMessage}`);
           reject(new Error(errorMessage));
         }
       });
@@ -197,12 +180,10 @@ class LoginScriptExecutor {
 
   submit2FAToken(token) {
     if (this.tokenResolver) {
-      console.log('[Login Script] submit2FAToken called — resolving tokenResolver with token');
       this.tokenResolver.resolve(token);
       this.tokenResolver = null;
       return true;
     }
-    console.error('[Login Script] submit2FAToken called but tokenResolver is null — no active 2FA request waiting');
     return false;
   }
 
