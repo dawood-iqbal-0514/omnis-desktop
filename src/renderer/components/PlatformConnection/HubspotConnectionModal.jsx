@@ -59,6 +59,7 @@ const HubspotConnectionModal = ({ isOpen, onClose }) => {
   const [hasChanges, setHasChanges] = useState(false);
   const [showPasswords, setShowPasswords] = useState({});
   const [show2FAModal, setShow2FAModal] = useState(false);
+  const [twoFAMessage, setTwoFAMessage] = useState('');
   const [isSubmitting2FA, setIsSubmitting2FA] = useState(false);
 
   // Initialize form data from connection
@@ -224,6 +225,7 @@ const HubspotConnectionModal = ({ isOpen, onClose }) => {
 
     const handle2FARequest = (event, data) => {
       if (data && data.platformId === platformId) {
+        setTwoFAMessage(data.message || '');
         setShow2FAModal(true);
       }
     };
@@ -235,24 +237,6 @@ const HubspotConnectionModal = ({ isOpen, onClose }) => {
       if (window.automationAPI && window.automationAPI.off2FARequest) {
         window.automationAPI.off2FARequest(handle2FARequest);
       }
-    };
-  }, [platformId]);
-
-  // Forward Python script debug lines to the browser DevTools console
-  // Open DevTools (Ctrl+Shift+I) and look for [HubSpot Login] lines while logging in
-  useEffect(() => {
-    if (!window.automationAPI?.onLoginDebug) return;
-
-    const handleDebug = (event, data) => {
-      if (data?.platformId === platformId) {
-        console.log(`[HubSpot Login] ${data.line}`);
-      }
-    };
-
-    window.automationAPI.onLoginDebug(handleDebug);
-
-    return () => {
-      window.automationAPI?.offLoginDebug?.(handleDebug);
     };
   }, [platformId]);
 
@@ -649,6 +633,7 @@ const HubspotConnectionModal = ({ isOpen, onClose }) => {
         onClose={() => setShow2FAModal(false)}
         onSubmit={handle2FASubmit}
         isLoading={isSubmitting2FA}
+        message={twoFAMessage}
       />
     </>
   );

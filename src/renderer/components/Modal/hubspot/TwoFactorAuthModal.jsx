@@ -2,7 +2,7 @@ import React, { useState } from 'react';
 import Modal from '../Modal';
 import { ButtonPlain } from '../../Button';
 
-const TwoFactorAuthModal = ({ isOpen, onClose, onSubmit, isLoading = false }) => {
+const TwoFactorAuthModal = ({ isOpen, onClose, onSubmit, isLoading = false, message = '' }) => {
   const [token, setToken] = useState('');
   const [error, setError] = useState('');
 
@@ -44,8 +44,8 @@ const TwoFactorAuthModal = ({ isOpen, onClose, onSubmit, isLoading = false }) =>
     >
       <form onSubmit={handleSubmit} className="space-y-4">
         <div>
-          <p className="text-text-secondary text-sm mb-4">
-            HubSpot has sent a 2FA code to your email. Please enter it below to continue.
+          <p className="text-text-secondary text-sm mb-4 whitespace-pre-line">
+            {message || 'HubSpot has sent a 2FA code to your email. Please enter it below to continue.'}
           </p>
           <label
             className="block text-text-secondary text-sm font-medium mb-2"
