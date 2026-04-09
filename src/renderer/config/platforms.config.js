@@ -92,7 +92,7 @@ const getFallbackConfig = () => ({
     ],
   },
   linkedin: {
-    name: 'LinkedIn', logo: linkedinLogo, setupType: 'automation', enabled: true,
+    name: 'LinkedIn', logo: linkedinLogo, setupType: 'automation', enabled: false,
     fields: [],
   },
   ghl: {
