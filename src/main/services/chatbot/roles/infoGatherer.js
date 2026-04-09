@@ -28,7 +28,7 @@ class InfoGatherer {
           `- actionId: "${script.actionId}" - ${script.description}`
         ).join('\n');
         
-        const automationScriptsSection = `\n\nAVAILABLE AUTOMATION SCRIPTS:\nThe following automation scripts are available for ${platformId}. Use the exact actionId when creating execution plans:\n\n${scriptsList}\n\nIMPORTANT: When the user requests a task that matches an automation script description, you MUST use the corresponding actionId in your execution plan.\n\nExamples:\n- User says "create a list" or "create a segment" → use actionId: "list_automation"\n- User says "login to HubSpot" → use actionId: "login"`;
+        const automationScriptsSection = `\n\nAVAILABLE AUTOMATION SCRIPTS:\nThe following automation scripts are available for ${platformId}. Use the exact actionId when creating execution plans:\n\n${scriptsList}\n\nIMPORTANT: When the user requests a task that matches an automation script description, you MUST use the corresponding actionId in your execution plan.\n\nExamples:\n- User says "create a list", "create an active list", or "create a segment" → use actionId: "create_active_list"\n- User says "create a workflow" → use actionId: "workflow_creator"\n- User says "login to HubSpot" → use actionId: "login"`;
         
         // Insert before the [PLAN_READY] section or at the end
         if (prompt.includes('[PLAN_READY]')) {
@@ -218,33 +218,42 @@ IMPORTANT RULES:
     if (fullConversation.includes('workflow')) {
       // User wants to create a workflow
       action = 'workflow_creator';
-      
+
+      // Extract workflow name
+      const wfNameMatch = fullConversation.match(/(?:workflow\s+)?(?:name|call|titled?)\s+(?:it\s+)?(?:as\s+)?["']([^"']+)["']/i)
+        || fullConversation.match(/(?:name|call|titled?)\s+(?:it\s+)?(?:as\s+)?["']?([^"'\n,]+?)["']?(?:\s+that|\s+which|\s+when|\s+and|$)/i);
+      if (wfNameMatch && wfNameMatch[1] && wfNameMatch[1].length > 2) {
+        params.workflowName = wfNameMatch[1].trim();
+      }
+
       // Extract workflow details
       // Trigger: when a contact is created, when a deal is created, etc.
       if (fullConversation.includes('contact') && (fullConversation.includes('create') || fullConversation.includes('new'))) {
         params.trigger = 'new_contact_created';
       } else if (fullConversation.includes('deal') && (fullConversation.includes('create') || fullConversation.includes('new'))) {
         params.trigger = 'new_deal_created';
+      } else if (fullConversation.includes('form') && fullConversation.includes('submit')) {
+        params.trigger = 'form_submitted';
       }
-      
+
       // Extract email recipient
       const emailMatch = fullConversation.match(/([a-z0-9._%+-]+@[a-z0-9.-]+\.[a-z]{2,})/i);
       if (emailMatch) {
         params.email = emailMatch[1];
       }
-      
+
       // Extract subject
       const subjectMatch = fullConversation.match(/subject\s+(?:is|as|:)?\s*["']?([^"']+)["']?/i);
       if (subjectMatch && subjectMatch[1]) {
         params.subject = subjectMatch[1].trim();
       }
-      
+
       // Extract body
       const bodyMatch = fullConversation.match(/body\s+(?:is|as|:)?\s*["']?([^"']+)["']?/i);
       if (bodyMatch && bodyMatch[1]) {
         params.body = bodyMatch[1].trim();
       }
-      
+
       // If subject and body are the same (common pattern)
       if (!params.subject && !params.body) {
         const sameMatch = fullConversation.match(/subject\s+and\s+body\s+(?:is|as|:)?\s*["']?([^"']+)["']?/i);
@@ -253,27 +262,49 @@ IMPORTANT RULES:
           params.body = sameMatch[1].trim();
         }
       }
-    } else if (fullConversation.includes('list') || fullConversation.includes('segment')) {
-      // User wants to create a list/segment
-      action = 'list_automation';
-      
-      // Extract list criteria/description
-      const listMatch = fullConversation.match(/(?:list|segment)\s+(?:of\s+)?(?:contacts?\s+)?(?:who|that|which)\s+(.+?)(?:\s+in\s+the\s+last|\s+for|$)/i);
-      if (listMatch && listMatch[1]) {
-        params.criteria = listMatch[1].trim();
+
+      // Build a full description from all gathered context
+      // This is the key parameter the API script uses to talk to HubSpot AI
+      const descParts = [];
+      if (params.trigger) descParts.push(`triggers when ${params.trigger.replace(/_/g, ' ')}`);
+      if (params.email) descParts.push(`sends an email to ${params.email}`);
+      if (params.subject) descParts.push(`with subject "${params.subject}"`);
+      if (params.body) descParts.push(`with body "${params.body}"`);
+
+      if (descParts.length > 0) {
+        params.description = descParts.join(', ');
       } else {
-        // Try to extract any description after "create a list"
-        const createListMatch = fullConversation.match(/create\s+(?:a\s+)?(?:list|segment)(?:\s+of\s+contacts?)?\s+(.+?)(?:\s+in\s+the\s+last|\s+for|$)/i);
-        if (createListMatch && createListMatch[1]) {
-          params.criteria = createListMatch[1].trim();
+        // Fall back to the full conversation as description
+        params.description = fullConversation.replace(/\b(create|make|build)\s+(?:a\s+)?workflow\s+/i, '').trim();
+      }
+    } else if (fullConversation.includes('list') || fullConversation.includes('segment')) {
+      // User wants to create an active list/segment
+      action = 'create_active_list';
+
+      // Extract the full natural language description for the NL→filter converter
+      // Try multiple patterns to capture the description
+      const descPatterns = [
+        /(?:list|segment)\s+(?:of\s+)?(?:contacts?\s+)?(?:who|that|which)\s+(.+)/i,
+        /create\s+(?:a\s+)?(?:active\s+)?(?:list|segment)(?:\s+of\s+contacts?)?\s+(.+)/i,
+        /(?:list|segment)\s+(.+)/i,
+      ];
+
+      for (const pattern of descPatterns) {
+        const descMatch = fullConversation.match(pattern);
+        if (descMatch && descMatch[1]) {
+          params.description = descMatch[1].trim();
+          break;
         }
       }
-      
+
       // Extract list name if mentioned
       const nameMatch = fullConversation.match(/(?:name|call|titled?)\s+(?:it\s+)?(?:as\s+)?["']?([^"']+)["']?/i);
       if (nameMatch && nameMatch[1]) {
-        params.listName = nameMatch[1].trim();
+        params.name = nameMatch[1].trim();
       }
+
+      // Default object type: contacts
+      params.objectType = '0-1';
     } else if (fullConversation.includes('contact') && fullConversation.includes('create')) {
       // Only if it's explicitly "create contact" (not "create list of contacts")
       if (!fullConversation.includes('list') && !fullConversation.includes('segment')) {
@@ -322,13 +353,13 @@ IMPORTANT RULES:
         description: description,
         parameters: params
       });
-    } else if (action === 'list_automation') {
-      // Handle list/segment creation
+    } else if (action === 'create_active_list') {
+      // Handle active list/segment creation
       actions.push({
-        actionId: 'list_automation',
-        description: params.criteria 
-          ? `Create list/segment: ${params.criteria}`
-          : 'Create contact list/segment',
+        actionId: 'create_active_list',
+        description: params.description
+          ? `Create active list: ${params.description}`
+          : 'Create active contact list',
         parameters: params
       });
     } else if (action === 'create_contact') {

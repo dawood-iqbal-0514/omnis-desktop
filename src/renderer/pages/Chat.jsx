@@ -3,9 +3,10 @@ import Confetti from 'react-confetti';
 import { ButtonPlain, ButtonIconed } from '../components/Button';
 import { LoaderSmall } from '../components/Loader';
 import { ExecutionPlanCard, ExecutionLogs } from '../components/Chat';
-import { PlatformSelectionModal, HubSpotAIModal } from '../components/Modal';
+import { PlatformSelectionModal } from '../components/Modal';
 import usePlatformStore from '../store/platformStore';
 import { formatTimeLocal12Hour } from '../utils/date';
+import { crmAPI } from '../services/api/crm';
 
 const Chat = ({ setActivePage }) => {
   const selectedPlatform = usePlatformStore((state) => state.selectedPlatform);
@@ -32,8 +33,7 @@ const Chat = ({ setActivePage }) => {
   const [pendingPlan, setPendingPlan] = useState(null);
   const [showConfetti, setShowConfetti] = useState(false);
   const [windowSize, setWindowSize] = useState({ width: window.innerWidth, height: window.innerHeight });
-  const [showHubSpotAIModal, setShowHubSpotAIModal] = useState(false);
-  const [hubSpotAIQuestion, setHubSpotAIQuestion] = useState('');
+  const [waitingForAIResponse, setWaitingForAIResponse] = useState(false);
   const [isSubmittingAIResponse, setIsSubmittingAIResponse] = useState(false);
   const messagesEndRef = useRef(null);
   const inputRef = useRef(null);
@@ -72,8 +72,14 @@ const Chat = ({ setActivePage }) => {
 
     const handleHubSpotAIQuestion = (event, data) => {
       if (data && data.question) {
-        setHubSpotAIQuestion(data.question);
-        setShowHubSpotAIModal(true);
+        const aiQuestionMessage = {
+          id: Date.now(),
+          type: 'bot',
+          content: `⚙️ System Question: ${data.question}`,
+          timestamp: new Date().toISOString(),
+        };
+        setMessages(prev => [...prev, aiQuestionMessage]);
+        setWaitingForAIResponse(true);
       }
     };
 
@@ -89,8 +95,7 @@ const Chat = ({ setActivePage }) => {
     try {
       const result = await window.automationAPI.submitHubSpotAIResponse(response);
       if (result.success) {
-        setShowHubSpotAIModal(false);
-        setHubSpotAIQuestion('');
+        setWaitingForAIResponse(false);
       } else {
         console.error('Failed to submit HubSpot AI response:', result.error);
       }
@@ -99,7 +104,7 @@ const Chat = ({ setActivePage }) => {
     } finally {
       setIsSubmittingAIResponse(false);
     }
-  }; // Run only on mount
+  };
 
   // Update welcome message when platform is selected
   useEffect(() => {
@@ -120,16 +125,23 @@ const Chat = ({ setActivePage }) => {
     if (!input.trim() || isTyping) return;
 
     const userMessage = {
-      id: messages.length + 1,
+      id: Date.now(),
       type: 'user',
       content: input.trim(),
       timestamp: new Date().toISOString(),
     };
 
     setMessages(prev => [...prev, userMessage]);
-    
+
     const userInput = input.trim();
     setInput('');
+
+    // If waiting for AI response, route input there instead of normal chat
+    if (waitingForAIResponse) {
+      await handleHubSpotAIResponse(userInput);
+      return;
+    }
+
     setIsTyping(true);
 
     try {
@@ -297,7 +309,6 @@ const Chat = ({ setActivePage }) => {
     setIsExecuting(true);
     setExecutionLogs([]);
 
-    // Add execution start message
     const executionStartMessage = {
       id: messages.length + 1,
       type: 'bot',
@@ -309,142 +320,52 @@ const Chat = ({ setActivePage }) => {
 
     try {
       const logs = [];
-      
-      // Execute each step
-      for (const step of executionJSON.steps) {
-        // Add running log
-        const runningLog = {
-          step: step.order,
-          type: step.type,
-          status: 'running',
-          message: `Step ${step.order}: ${step.description || step.action}...`,
-          timestamp: new Date().toISOString(),
-        };
 
-        logs.push(runningLog);
-        setExecutionLogs([...logs]);
-
-        try {
-          // Simulate execution delay
-          await new Promise(resolve => setTimeout(resolve, 1000));
-
-          if (step.type === 'api') {
-            try {
-              // Call backend API
-              const response = await fetch(`http://localhost:4000${step.apiConfig.endpoint}`, {
-                method: step.apiConfig.method || 'POST',
-                headers: {
-                  'Content-Type': 'application/json',
-                  'Authorization': `Bearer ${localStorage.getItem('omnis-reach-token')}`
-                },
-                body: JSON.stringify(step.parameters)
-              });
-
-              const data = await response.json();
-
-              if (response.ok && data.success) {
-                logs.push({
-                  step: step.order,
-                  type: step.type,
-                  status: 'success',
-                  message: `${step.description || step.action} completed successfully`,
-                  timestamp: new Date().toISOString(),
-                  details: data.data
-                });
-              } else {
-                throw new Error(data.error || 'API call failed');
-              }
-            } catch (apiError) {
-              // If API is not available, show mock execution
-              console.warn('⚠️ API not available, showing mock execution:', apiError.message);
-              logs.push({
-                step: step.order,
-                type: step.type,
-                status: 'success',
-                message: `${step.description || step.action} completed (mock execution - API not integrated)`,
-                timestamp: new Date().toISOString(),
-                details: { 
-                  mock: true, 
-                  message: 'This is a mock execution. API integration pending.',
-                  parameters: step.parameters 
-                }
-              });
-            }
-          } else if (step.type === 'automation') {
-            try {
-              // Call automation via IPC
-              const result = await window.automationAPI.executeTask({
-                platform: executionJSON.platform,
-                action: step.action || step.actionId,
-                parameters: step.parameters,
-                script: step.automationConfig?.script
-              });
-
-              if (result.success) {
-                logs.push({
-                  step: step.order,
-                  type: step.type,
-                  status: 'success',
-                  message: `${step.description || step.action} completed successfully`,
-                  timestamp: new Date().toISOString(),
-                  details: result.result
-                });
-              } else {
-                // Script not found or execution failed
-                throw new Error(result.error || 'Automation failed');
-              }
-            } catch (automationError) {
-              console.error('❌ Automation execution error:', automationError.message);
-              
-              // Check if error is about script not being available
-              const isScriptNotFound = automationError.message.includes('not available') || 
-                                       automationError.message.includes('not found');
-              
-              logs.push({
-                step: step.order,
-                type: step.type,
-                status: 'error',
-                message: isScriptNotFound 
-                  ? `Script not available: ${automationError.message}`
-                  : `${step.description || step.action} failed: ${automationError.message}`,
-                timestamp: new Date().toISOString(),
-                details: { 
-                  error: automationError.message,
-                  script: step.automationConfig?.script,
-                  action: step.action
-                }
-              });
-            }
-          }
-
+      // Use crmAPI.executeplan to route steps properly:
+      //   API steps    → POST /api/crm/execute (backend middleware chain)
+      //   Automation   → window.automationAPI.executeTask (Electron IPC)
+      const { results, allSuccess } = await crmAPI.executeplan(executionJSON, {
+        onStepStart: (step) => {
+          logs.push({
+            step: step.order,
+            type: step.type,
+            status: 'running',
+            message: `Step ${step.order}: ${step.description || step.action}...`,
+            timestamp: new Date().toISOString(),
+          });
           setExecutionLogs([...logs]);
-        } catch (error) {
+        },
+        onStepDone: (step, result) => {
+          logs.push({
+            step: step.order,
+            type: step.type,
+            status: 'success',
+            message: `${step.description || step.action} completed successfully`,
+            timestamp: new Date().toISOString(),
+            details: result?.data || result?.result,
+          });
+          setExecutionLogs([...logs]);
+        },
+        onStepError: (step, error) => {
           logs.push({
             step: step.order,
             type: step.type,
             status: 'error',
-            message: `Failed: ${error.message}`,
+            message: `${step.description || step.action} failed: ${error.message}`,
             timestamp: new Date().toISOString(),
+            details: {
+              error: error.message,
+              script: step.automationConfig?.script,
+              action: step.action,
+            },
           });
           setExecutionLogs([...logs]);
-          break; // Stop on error
-        }
-      }
+        },
+      });
 
-      // Add completion message
-      const allSuccess = logs.every(log => log.status !== 'error');
-      const hasMockExecution = logs.some(log => log.details?.mock === true);
-      
-      let completionMessage = '';
-      if (hasMockExecution) {
-        completionMessage = allSuccess
-          ? '✅ Execution completed (mock mode - APIs not integrated yet). All steps would have been executed successfully.'
-          : '❌ Execution completed with errors (mock mode).';
-      } else {
-        completionMessage = allSuccess
-          ? '✅ All tasks completed successfully!'
-          : '❌ Execution completed with errors. Please check the logs.';
-      }
+      const completionMessage = allSuccess
+        ? '✅ All tasks completed successfully!'
+        : '❌ Execution completed with errors. Please check the logs.';
 
       const completionMsg = {
         id: messages.length + 2,
@@ -453,16 +374,14 @@ const Chat = ({ setActivePage }) => {
         timestamp: new Date().toISOString(),
       };
 
-      // Add execution logs as a persistent message in chat
       if (logs.length > 0) {
         const logsMessage = {
           id: messages.length + 3,
           type: 'execution-logs',
-          logs: logs,
+          logs,
           timestamp: new Date().toISOString(),
         };
-
-      setMessages(prev => [...prev, logsMessage, completionMsg]);
+        setMessages(prev => [...prev, logsMessage, completionMsg]);
       } else {
         setMessages(prev => [...prev, completionMsg]);
       }
@@ -470,30 +389,26 @@ const Chat = ({ setActivePage }) => {
       // Reset chatbot role to gatherer for next task
       try {
         await window.cerebrasAPI.resetChatbot();
-        console.log('✅ Chatbot role reset to gatherer');
-      } catch (error) {
-        console.error('❌ Failed to reset chatbot role:', error);
+      } catch (err) {
+        console.error('Failed to reset chatbot role:', err);
       }
     } catch (error) {
-      console.error('❌ Execution error:', error);
+      console.error('Execution error:', error);
       const errorMessage = {
         id: messages.length + 2,
         type: 'bot',
         content: `Execution failed: ${error.message}`,
         timestamp: new Date().toISOString(),
       };
-
       setMessages(prev => [...prev, errorMessage]);
 
-      // Reset chatbot role even on error
       try {
         await window.cerebrasAPI.resetChatbot();
       } catch (resetError) {
-        console.error('❌ Failed to reset chatbot role:', resetError);
+        console.error('Failed to reset chatbot role:', resetError);
       }
     } finally {
       setIsExecuting(false);
-      // Don't clear logs immediately - let them persist
       setTimeout(() => setExecutionLogs([]), 5000);
     }
   };
@@ -597,7 +512,7 @@ const Chat = ({ setActivePage }) => {
                 type="text"
                 value={input}
                 onChange={(e) => setInput(e.target.value)}
-                placeholder={isExecuting ? "Executing tasks..." : "Type your message..."}
+                placeholder={isExecuting ? "Executing tasks..." : waitingForAIResponse ? "Type your answer to the system question..." : "Type your message..."}
                 className="flex-1 bg-base-background border border-border-muted rounded-lg px-4 py-3 text-text-primary placeholder-text-muted focus:outline-none focus:ring-2 focus:ring-primary-accent focus:border-transparent transition-all"
                 disabled={isTyping || isExecuting}
               />
@@ -646,14 +561,6 @@ const Chat = ({ setActivePage }) => {
         }}
       />
 
-      {/* HubSpot AI Modal */}
-      <HubSpotAIModal
-        isOpen={showHubSpotAIModal}
-        onClose={() => setShowHubSpotAIModal(false)}
-        onSubmit={handleHubSpotAIResponse}
-        question={hubSpotAIQuestion}
-        isLoading={isSubmittingAIResponse}
-      />
     </div>
   );
 };

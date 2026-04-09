@@ -3,11 +3,77 @@ from DrissionPage.common import Keys
 import time
 import os
 import sys
+import json
 import traceback
+from pathlib import Path
+
+SCRIPT_DIR = Path(__file__).parent.absolute()
+COOKIE_FILE = SCRIPT_DIR / "hs_cookies.json"
+
+# Cookies needed for internal API calls (lists, workflows, etc.)
+REQUIRED_COOKIES = {
+    "hubspotapi-csrf",
+    "csrf.app",
+    "hubspotutk",
+    "hs_login_email",
+    "hs_login_metadata",
+    "hubspotapi-prefs",
+    "__hs_cookie_cat_pref",
+}
+
 
 def err(msg):
     """Print to stderr so Node.js error parser picks it up."""
     print(f"ERROR: {msg}", file=sys.stderr, flush=True)
+
+
+def extract_and_save_cookies(page, portal_url=None):
+    """
+    Extract session cookies from the browser after login and save to hs_cookies.json.
+    These cookies are used by API-based automation scripts (ActiveList, Workflows, etc.)
+    so they don't need to launch a browser.
+    portal_url can be either a portal ID string or a URL containing the portal ID.
+    """
+    try:
+        cookies_list = page.cookies()
+        cookies_dict = {}
+
+        for cookie in cookies_list:
+            name = cookie.get("name", "")
+            value = cookie.get("value", "")
+            domain = cookie.get("domain", "")
+
+            # Only capture hubspot.com cookies
+            if "hubspot" in domain and name and value:
+                cookies_dict[name] = value
+
+        if not cookies_dict:
+            print("[Cookies] Warning: No HubSpot cookies captured", file=sys.stderr)
+            return
+
+        # Ensure critical cookies are present
+        has_csrf = "hubspotapi-csrf" in cookies_dict or "csrf.app" in cookies_dict
+        if not has_csrf:
+            print("[Cookies] Warning: CSRF token not found in cookies", file=sys.stderr)
+
+        # Save portal ID (can be passed as direct ID or URL)
+        if portal_url:
+            import re
+            if re.match(r'^\d{5,}$', str(portal_url)):
+                cookies_dict["_omnis_portal_id"] = str(portal_url)
+            else:
+                match = re.search(r'/(\d{5,})(?:/|$|\?)', str(portal_url))
+                if match:
+                    cookies_dict["_omnis_portal_id"] = match.group(1)
+
+        # Save to file
+        with open(COOKIE_FILE, "w") as f:
+            json.dump(cookies_dict, f, indent=2)
+
+        print(f"[Cookies] Saved {len(cookies_dict)} cookies to {COOKIE_FILE.name}", flush=True)
+
+    except Exception as e:
+        print(f"[Cookies] Warning: Failed to extract cookies: {e}", file=sys.stderr)
 
 
 try:
@@ -88,6 +154,16 @@ try:
         except BaseException:
             pass
 
+        # Extract portal ID from 2FA URL (e.g. loginPortalId=50845045)
+        import re as _re
+        _2fa_url = page.url
+        _portal_match = _re.search(r'loginPortalId=(\d+)', _2fa_url)
+        if _portal_match:
+            _early_portal_id = _portal_match.group(1)
+            print(f"[Login] Got portal ID from 2FA URL: {_early_portal_id}", flush=True)
+        else:
+            _early_portal_id = None
+
         # Signal Node.js — include the page message after the marker
         print(f"[2FA_REQUEST] {page_message or 'Enter the verification code'}", flush=True)
         sys.stdout.flush()
@@ -154,6 +230,35 @@ try:
     final_url = page.url
 
     if "app.hubspot.com" in final_url and "login" not in final_url.lower():
+        import re as _re
+
+        # Use portal ID captured from 2FA URL if available
+        portal_id = _early_portal_id if '_early_portal_id' in dir() else None
+
+        # Fallback: extract from current URL (after login redirect)
+        if not portal_id:
+            match = _re.search(r'/(\d{5,})(?:/|$|\?)', final_url)
+            if match:
+                portal_id = match.group(1)
+                print(f"[Login] Got portal ID from redirect URL: {portal_id}", flush=True)
+
+        # Fallback: navigate to /contacts which always has portal ID in URL
+        if not portal_id:
+            page.get("https://app.hubspot.com/contacts")
+            time.sleep(5)
+            match = _re.search(r'/(\d{5,})(?:/|$|\?)', page.url)
+            if match:
+                portal_id = match.group(1)
+                print(f"[Login] Got portal ID from contacts URL: {portal_id}", flush=True)
+
+        if not portal_id:
+            print("[Login] WARNING: Could not detect portal ID from any method", file=sys.stderr, flush=True)
+
+        if portal_id:
+            print(f"[Cookies] Captured portal ID: {portal_id}", flush=True)
+
+        # Extract and save session cookies + portal ID for API-based scripts
+        extract_and_save_cookies(page, portal_url=portal_id)
         print("[SUCCESS] Login successful!", flush=True)
         page.quit()
         sys.exit(0)

@@ -463,9 +463,12 @@ const HubspotConnectionModal = ({ isOpen, onClose }) => {
             {fields.map((field) => {
               // Check if field is configured: check connection credentials (apiKey and email are returned from backend)
               const fieldValue = connection?.credentials?.[field.name];
-              // For password, never show as configured (security - password is never returned from backend)
-              // For other fields, show as configured if they exist in connection credentials
-              const isConfigured = field.name === 'password' ? false : !!fieldValue && !savingField;
+              // For password, the actual value is never returned from backend (security).
+              // We detect it's saved via: hasPassword flag (backend) OR email existing
+              // in credentials (email & password are always saved together by the debounce logic).
+              const isConfigured = field.name === 'password'
+                ? (!!connection?.credentials?.hasPassword || !!connection?.credentials?.email) && !savingField
+                : !!fieldValue && !savingField;
               const isPassword = field.type === 'password';
               const showPassword = showPasswords[field.name] || false;
               

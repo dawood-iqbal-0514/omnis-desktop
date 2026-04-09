@@ -43,6 +43,7 @@ class AutomationScriptExecutor {
         env: {
           ...process.env,
           HUBSPOT_PROFILE_PATH: profilePath,
+          AUTOMATION_PARAMS: JSON.stringify(parameters || {}),
         },
       });
 
@@ -98,15 +99,21 @@ class AutomationScriptExecutor {
         if (code === 0) {
           resolve({ success: true, stdout, stderr });
         } else {
-          // Extract user-friendly error message from stderr
+          // Extract user-friendly error message
           let errorMessage = 'Script execution failed';
-          
-          if (stderr) {
+
+          // First: check stdout for [ERROR] marker (our scripts output errors here)
+          const errorMarkerMatch = stdout.match(/\[ERROR\](.+?)(?:\n|$)/s);
+          if (errorMarkerMatch && errorMarkerMatch[1].trim().length > 5) {
+            errorMessage = errorMarkerMatch[1].trim();
+          }
+          // Second: check stderr for ERROR:/Exception lines
+          else if (stderr) {
             const lines = stderr.split('\n');
-            const errorLine = lines.find(line => 
-              line.includes('ERROR:') || 
-              line.includes('Error:') || 
-              line.includes('Failed') || 
+            const errorLine = lines.find(line =>
+              line.includes('ERROR:') ||
+              line.includes('Error:') ||
+              line.includes('Failed') ||
               line.includes('Exception')
             );
             if (errorLine) {
@@ -119,7 +126,7 @@ class AutomationScriptExecutor {
               }
             }
           }
-          
+
           console.error(`[Automation Script] Final error message: ${errorMessage}`);
           reject(new Error(errorMessage));
         }
