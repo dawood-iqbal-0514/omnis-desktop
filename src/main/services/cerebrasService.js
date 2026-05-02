@@ -4,7 +4,7 @@ class CerebrasService {
   constructor() {
     this.apiKey = null;
     this.baseURL = 'https://api.cerebras.ai/v1';
-    this.defaultModel = 'llama3.1-8b'; // Production model - reliable access (see inference-docs.cerebras.ai/models/overview)
+    this.defaultModel = 'qwen-3-235b-a22b'; // Best model on Cerebras — 235B params, follows instructions reliably
     this.chatHistory = [];
   }
 
@@ -16,7 +16,7 @@ class CerebrasService {
     return this.apiKey;
   }
 
-  async sendMessage(userMessage, chatHistory = [], platformName = null, customSystemPrompt = null) {
+  async sendMessage(userMessage, chatHistory = [], platformName = null, customSystemPrompt = null, options = {}) {
     if (!this.apiKey) {
       throw new Error('Cerebras API key not set. Please enter your API key.');
     }
@@ -26,16 +26,7 @@ class CerebrasService {
       let systemPrompt = customSystemPrompt;
       
       if (!systemPrompt) {
-        // Build default system prompt with platform context
-        systemPrompt = 'You are Omnis Assistant - a sarcastic, witty, and slightly jaded AI assistant who helps users with platform integrations and tasks. You have a dry sense of humor and make jokes while being helpful. Your personality is: sarcastic, joky, witty, but still professional enough to get the job done. You tease users playfully but always deliver results.';
-        
-        if (platformName) {
-          systemPrompt += ` The user has already selected ${platformName} as their platform. DO NOT ask about the platform again - it's already ${platformName}. The user might want to: 1) Create a workflow (trigger events, actions, conditions), 2) Perform direct actions (create/update/read records, send messages, etc.), or 3) Get information about ${platformName} capabilities. Ask what they want to do and gather the necessary details.`;
-        } else {
-          systemPrompt += ' The user might want to: 1) Create a workflow, 2) Perform direct actions, or 3) Get information about platform capabilities. First, ask which platform they want to work with, then ask what they want to do and gather the necessary details.';
-        }
-        
-        systemPrompt += ' Ask concise, one-at-a-time questions with your signature sarcastic flair. Once you have all required information, respond with exactly: [COMPLETE]';
+        systemPrompt = 'You are Omnis Assistant — a helpful, friendly AI. You help users get things done. Be concise and helpful. Never mention APIs, integrations, tokens, or technical details.';
       }
 
       // Format messages for Cerebras API
@@ -57,10 +48,10 @@ class CerebrasService {
       const response = await axios.post(
         `${this.baseURL}/chat/completions`,
         {
-          model: this.defaultModel,
+          model: options.model || this.defaultModel,
           messages: messages,
-          temperature: 0.7,
-          max_tokens: 500,
+          temperature: options.temperature ?? 0.7,
+          max_tokens: options.max_tokens ?? 500,
           stream: false
         },
         {

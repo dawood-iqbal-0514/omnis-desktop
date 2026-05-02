@@ -50,18 +50,30 @@ class ApiService {
       const response = await fetch(url, config);
       const data = await response.json();
 
+      // Wrap any error response into an Error that carries the response
+      // metadata (status, linkedinChallenge marker, etc.) so callers can
+      // recover/retry instead of just seeing a generic message.
+      const buildError = (msg) => {
+        const err = new Error(msg);
+        err.status = response.status;
+        if (data?.linkedinChallenge) err.linkedinChallenge = data.linkedinChallenge;
+        if (data?.details) err.details = data.details;
+        return err;
+      };
+
       if (response.status === 401) {
+        // CRM/platform 401 (bad API key, expired token) — NOT an app logout
+        if (endpoint.startsWith('/crm/')) {
+          throw buildError(data.error || data.message || 'Platform API error');
+        }
+        // App-level 401 (user JWT expired) — log out
         this.clearToken();
         if (on401Callback) on401Callback();
-        const errorMessage = data.error || data.message || 'Session expired';
-        const err = new Error(errorMessage);
-        err.status = 401;
-        throw err;
+        throw buildError(data.error || data.message || 'Session expired');
       }
 
       if (!response.ok) {
-        const errorMessage = data.error || data.message || 'Request failed';
-        throw new Error(errorMessage);
+        throw buildError(data.error || data.message || 'Request failed');
       }
 
       return data;

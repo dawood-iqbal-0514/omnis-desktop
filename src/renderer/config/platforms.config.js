@@ -83,6 +83,13 @@ export const isPlatformEnabled = (platformId) => {
 
 // ─── Fallback config (used if backend unreachable) ────────────────────────────
 const getFallbackConfig = () => ({
+  linkedin: {
+    name: 'LinkedIn', logo: linkedinLogo, setupType: 'credentials', enabled: true,
+    fields: [
+      { name: 'email',    label: 'Email Address', type: 'email',    placeholder: 'your@example.com',           required: true },
+      { name: 'password', label: 'Password',      type: 'password', placeholder: 'Enter your LinkedIn password', required: true },
+    ],
+  },
   hubspot: {
     name: 'HubSpot', logo: hubspotLogo, setupType: 'hybrid', enabled: true,
     fields: [
@@ -91,13 +98,36 @@ const getFallbackConfig = () => ({
       { name: 'password', label: 'Password',      type: 'password', placeholder: 'Enter your HubSpot password', required: true },
     ],
   },
-  linkedin: {
-    name: 'LinkedIn', logo: linkedinLogo, setupType: 'automation', enabled: false,
-    fields: [],
+  smartlead: {
+    name: 'Smartlead', logo: smartleadLogo, setupType: 'apiKey', enabled: true,
+    fields: [
+      { name: 'apiKey', label: 'API Key', type: 'password', placeholder: 'Enter your Smartlead API key', required: true },
+    ],
   },
   ghl: {
-    name: 'GHL (GoHighLevel)', logo: ghlLogo, setupType: 'apiKey', enabled: false,
-    fields: [{ name: 'apiKey', label: 'API Key', type: 'text', placeholder: 'Enter your GHL API key', required: true }],
+    name: 'GHL (GoHighLevel)', logo: ghlLogo, setupType: 'hybrid', enabled: true,
+    fields: [
+      { name: 'apiKey',     label: 'API Key',       type: 'text',     placeholder: 'Enter your GHL API key',      required: true },
+      { name: 'email',      label: 'Email Address',  type: 'email',    placeholder: 'your@example.com',            required: true },
+      { name: 'password',   label: 'Password',       type: 'password', placeholder: 'Enter your GHL password',     required: true },
+      { name: 'locationId', label: 'Location ID',    type: 'text',     placeholder: 'Enter your GHL Location ID', required: true },
+    ],
+  },
+  activecampaign: {
+    name: 'ActiveCampaign', logo: activecampaignLogo, setupType: 'apiKey', enabled: true,
+    fields: [{ name: 'apiKey', label: 'API Key', type: 'text', placeholder: 'Enter your ActiveCampaign API key', required: true }],
+  },
+  slack: {
+    name: 'Slack', logo: slackLogo, setupType: 'apiKey', enabled: true,
+    fields: [
+      { name: 'botToken', label: 'Bot Token', type: 'password', placeholder: 'xoxb-your-bot-token', required: true },
+    ],
+  },
+  notion: {
+    name: 'Notion', logo: notionLogo, setupType: 'apiKey', enabled: true,
+    fields: [
+      { name: 'integrationToken', label: 'Integration Token', type: 'password', placeholder: 'secret_your-integration-token', required: true },
+    ],
   },
   apollo: {
     name: 'Apollo', logo: apolloLogo, setupType: 'apiKey', enabled: false,
@@ -111,10 +141,6 @@ const getFallbackConfig = () => ({
     name: 'Upwork', logo: upworkLogo, setupType: 'automation', enabled: false,
     fields: [],
   },
-  activecampaign: {
-    name: 'ActiveCampaign', logo: activecampaignLogo, setupType: 'apiKey', enabled: false,
-    fields: [{ name: 'apiKey', label: 'API Key', type: 'text', placeholder: 'Enter your ActiveCampaign API key', required: true }],
-  },
   n8n: {
     name: 'n8n', logo: n8nLogo, setupType: 'apiKey', enabled: false,
     fields: [{ name: 'apiKey', label: 'API Key', type: 'text', placeholder: 'Enter your n8n API key', required: true }],
@@ -122,18 +148,6 @@ const getFallbackConfig = () => ({
   make: {
     name: 'Make.com', logo: makeLogo, setupType: 'apiKey', enabled: false,
     fields: [{ name: 'apiKey', label: 'API Key', type: 'text', placeholder: 'Enter your Make.com API key', required: true }],
-  },
-  notion: {
-    name: 'Notion', logo: notionLogo, setupType: 'apiKey', enabled: false,
-    fields: [{ name: 'apiKey', label: 'API Key', type: 'text', placeholder: 'Enter your Notion API key', required: true }],
-  },
-  smartlead: {
-    name: 'Smartlead', logo: smartleadLogo, setupType: 'apiKey', enabled: false,
-    fields: [{ name: 'apiKey', label: 'API Key', type: 'text', placeholder: 'Enter your Smartlead API key', required: true }],
-  },
-  slack: {
-    name: 'Slack', logo: slackLogo, setupType: 'apiKey', enabled: false,
-    fields: [{ name: 'apiKey', label: 'API Key', type: 'text', placeholder: 'Enter your Slack API key', required: true }],
   },
   instantly: {
     name: 'Instantly', logo: instantlyLogo, setupType: 'apiKey', enabled: false,

@@ -10,8 +10,7 @@ const ExecutionPlanCard = ({ plan, onApprove, onEdit }) => {
     if (typeof planData === 'object' && planData.actions && Array.isArray(planData.actions)) {
       return planData.actions.map((action, index) => ({
         action: action.description || action.actionId || `Action ${index + 1}`,
-        details: Object.entries(action.parameters || {}).map(([key, value]) => `${key}: ${value}`),
-        parameters: action.parameters
+        parameters: action.parameters,
       }));
     }
 
@@ -19,8 +18,7 @@ const ExecutionPlanCard = ({ plan, onApprove, onEdit }) => {
     if (typeof planData === 'object' && planData.steps && Array.isArray(planData.steps)) {
       return planData.steps.map((step, index) => ({
         action: step.description || step.action || `Step ${index + 1}`,
-        details: Object.entries(step.parameters || {}).map(([key, value]) => `${key}: ${value}`),
-        parameters: step.parameters
+        parameters: step.parameters,
       }));
     }
 
@@ -74,22 +72,35 @@ const ExecutionPlanCard = ({ plan, onApprove, onEdit }) => {
               </div>
               <div className="flex-1">
                 <p className="text-text-primary font-medium">{step.action || step.description || `Step ${index + 1}`}</p>
-                {step.details && step.details.length > 0 && (
-                  <ul className="mt-1 space-y-1">
-                    {step.details.map((detail, detailIndex) => (
-                      <li key={detailIndex} className="text-sm text-text-secondary">
-                        - {detail}
-                      </li>
-                    ))}
-                  </ul>
-                )}
-                {step.parameters && (
-                  <div className="mt-2 text-sm text-text-secondary">
-                    {Object.entries(step.parameters).map(([key, value]) => (
-                      <div key={key}>
-                        <span className="font-medium">{key}:</span> {String(value)}
-                      </div>
-                    ))}
+                {step.parameters && Object.keys(step.parameters).length > 0 && (
+                  <div className="mt-1 space-y-0.5 text-sm text-text-secondary">
+                    {Object.entries(step.parameters)
+                      // Hide empty values + empty objects/arrays — they add noise.
+                      .filter(([, v]) => {
+                        if (v == null || v === '') return false;
+                        if (Array.isArray(v) && v.length === 0) return false;
+                        if (typeof v === 'object' && !Array.isArray(v) && Object.keys(v).length === 0) return false;
+                        return true;
+                      })
+                      .map(([key, value]) => {
+                        // Format objects / arrays nicely instead of "[object Object]".
+                        let display;
+                        if (Array.isArray(value)) {
+                          display = value.map((v) => typeof v === 'object' ? JSON.stringify(v) : String(v)).join(', ');
+                        } else if (typeof value === 'object') {
+                          // For a small object like { currentCompany: "openai" } show "currentCompany: openai"
+                          const inner = Object.entries(value).map(([k, v]) => `${k}: ${v}`).join(', ');
+                          display = inner || JSON.stringify(value);
+                        } else {
+                          display = String(value);
+                        }
+                        return (
+                          <div key={key} className="flex gap-2">
+                            <span className="font-medium text-text-secondary">{key}:</span>
+                            <span className="break-words flex-1 min-w-0">{display}</span>
+                          </div>
+                        );
+                      })}
                   </div>
                 )}
               </div>

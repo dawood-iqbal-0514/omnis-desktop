@@ -2,6 +2,29 @@ const { spawn } = require('child_process');
 const path = require('path');
 const { app } = require('electron');
 
+// ─── Platform-specific login script configuration ────────────────────────────
+const PLATFORM_CONFIG = {
+  hubspot: {
+    folder: 'hubspot',
+    script: 'Hubspot_Login.py',
+    envMap: (credentials, profilePath) => ({
+      HUBSPOT_EMAIL: credentials.email || '',
+      HUBSPOT_PASSWORD: credentials.password || '',
+      HUBSPOT_PROFILE_PATH: profilePath,
+    }),
+  },
+  ghl: {
+    folder: 'gohighlevel',
+    script: 'GHL_Login.py',
+    envMap: (credentials, profilePath) => ({
+      GHL_EMAIL: credentials.email || '',
+      GHL_PASSWORD: credentials.password || '',
+      GHL_LOCATION_ID: credentials.locationId || '',
+      GHL_PROFILE_PATH: profilePath,
+    }),
+  },
+};
+
 class LoginScriptExecutor {
   constructor(mainWindow) {
     this.mainWindow = mainWindow;
@@ -12,39 +35,27 @@ class LoginScriptExecutor {
 
   async executeLoginScript(platformId, credentials) {
     return new Promise((resolve, reject) => {
+      const config = PLATFORM_CONFIG[platformId];
+      if (!config) {
+        return reject(new Error(`No login script configured for platform: ${platformId}`));
+      }
+
       // Get script path - handle both development and production
       const isDev = !app.isPackaged;
       const scriptPath = isDev
-        ? path.join(
-            app.getAppPath(),
-            'src',
-            'automation',
-            'platforms',
-            platformId,
-            'Hubspot_Login.py'
-          )
-        : path.join(
-            process.resourcesPath,
-            'app.asar',
-            'src',
-            'automation',
-            'platforms',
-            platformId,
-            'Hubspot_Login.py'
-          );
+        ? path.join(app.getAppPath(), 'src', 'automation', 'platforms', config.folder, config.script)
+        : path.join(process.resourcesPath, 'app.asar', 'src', 'automation', 'platforms', config.folder, config.script);
 
       // Get profile path for browser
       const { paths } = require('../utils/paths');
       const profilePath = path.join(paths.userData(), 'OmnisReach_Profiles', platformId, 'default');
 
-      // Create Python process with stdin/stdout
+      // Create Python process with platform-specific env vars
       const pythonProcess = spawn('python', [scriptPath], {
         stdio: ['pipe', 'pipe', 'pipe'],
         env: {
           ...process.env,
-          HUBSPOT_EMAIL: credentials.email,
-          HUBSPOT_PASSWORD: credentials.password,
-          HUBSPOT_PROFILE_PATH: profilePath,
+          ...config.envMap(credentials, profilePath),
         },
       });
 
@@ -52,7 +63,7 @@ class LoginScriptExecutor {
 
       let stdout = '';
       let stderr = '';
-      let twoFAHandled = false; // Prevent double-triggering if data arrives in multiple chunks
+      let twoFAHandled = false;
 
       // Monitor stdout for 2FA request marker
       pythonProcess.stdout.on('data', (data) => {
@@ -63,7 +74,6 @@ class LoginScriptExecutor {
         if (!twoFAHandled && stdout.includes('[2FA_REQUEST]')) {
           twoFAHandled = true;
 
-          // Extract the page message text after the marker
           const marker = '[2FA_REQUEST]';
           const markerIdx = stdout.indexOf(marker);
           let pageMessage = '';
@@ -74,7 +84,7 @@ class LoginScriptExecutor {
           // Send 2FA request to frontend with the actual page message
           this.mainWindow.webContents.send('automation:2fa-request', {
             platformId,
-            message: pageMessage || 'Enter the verification code sent to your email.',
+            message: pageMessage || 'Enter the verification code.',
           });
 
           // Wait for token from frontend
@@ -99,60 +109,48 @@ class LoginScriptExecutor {
 
       pythonProcess.on('close', (code) => {
         this.currentProcess = null;
-        
+
         if (code === 0) {
           resolve({ success: true, stdout, stderr });
         } else {
-          // Extract user-friendly error message from stderr
           let errorMessage = 'Login failed';
-          
-          // Check for specific error patterns
+
           if (stderr.includes('ERROR: Chrome/Chromium not found') || stderr.includes('Chrome path found but file doesn\'t exist')) {
             errorMessage = 'Chrome is not installed or not found. Please install Google Chrome from https://www.google.com/chrome/';
           } else if (stderr.includes('WebSocketBadStatusException') || stderr.includes('Handshake status 404')) {
             errorMessage = 'Failed to start browser. Please make sure Chrome/Chromium is installed and try again.';
           } else if (stderr.includes('Failed to launch browser')) {
-            // Extract the actual error message from the Python script
             const errorMatch = stderr.match(/Failed to launch browser[^\n]*:?\s*([^\n]+)/i);
-            if (errorMatch && errorMatch[1]) {
-              errorMessage = `Browser failed to start: ${errorMatch[1].trim()}`;
-            } else {
-              errorMessage = 'Browser failed to start. Please check if Chrome is installed and accessible.';
-            }
+            errorMessage = errorMatch?.[1]?.trim()
+              ? `Browser failed to start: ${errorMatch[1].trim()}`
+              : 'Browser failed to start. Please check if Chrome is installed and accessible.';
           } else if (stderr.includes('No 2FA token provided')) {
             errorMessage = '2FA token is required but was not provided.';
           } else if (stderr.includes('Login failed')) {
             errorMessage = 'Login failed. Please check your email and password.';
           } else if (stderr) {
-            // Try to extract a meaningful error from stderr
             const lines = stderr.split('\n');
-            const errorLine = lines.find(line => 
-              line.includes('ERROR:') || 
-              line.includes('Error:') || 
-              line.includes('Failed') || 
+            const errorLine = lines.find(line =>
+              line.includes('ERROR:') ||
+              line.includes('Error:') ||
+              line.includes('Failed') ||
               line.includes('Exception')
             );
             if (errorLine) {
-              // Clean up the error message
-              errorMessage = errorLine
-                .replace(/^.*?(ERROR|Error)[:\s]+/i, '')
-                .replace(/file:.*$/i, '')
-                .trim();
+              errorMessage = errorLine.replace(/^.*?(ERROR|Error)[:\s]+/i, '').replace(/file:.*$/i, '').trim();
               if (!errorMessage || errorMessage.length < 5) {
                 errorMessage = 'Login failed. Please check the console for details.';
               }
             }
           }
-          
-          // If we still don't have a good error message, use stderr
+
           if (errorMessage === 'Login failed' && stderr.trim()) {
-            // Get first meaningful line from stderr
             const firstErrorLine = stderr.split('\n').find(line => line.trim().length > 10);
             if (firstErrorLine) {
-              errorMessage = firstErrorLine.trim().substring(0, 200); // Limit length
+              errorMessage = firstErrorLine.trim().substring(0, 200);
             }
           }
-          
+
           reject(new Error(errorMessage));
         }
       });
@@ -167,8 +165,6 @@ class LoginScriptExecutor {
   async waitFor2FAToken() {
     return new Promise((resolve, reject) => {
       this.tokenResolver = { resolve, reject };
-      
-      // Set timeout (5 minutes)
       setTimeout(() => {
         if (this.tokenResolver) {
           this.tokenResolver.reject(new Error('2FA token request timeout'));
@@ -188,9 +184,7 @@ class LoginScriptExecutor {
   }
 
   cancel() {
-    console.log('[Login Script] cancel() called —', new Error('cancel trace').stack);
     if (this.currentProcess) {
-      console.log('[Login Script] Killing Python process from cancel()');
       this.currentProcess.kill();
       this.currentProcess = null;
     }
@@ -202,4 +196,3 @@ class LoginScriptExecutor {
 }
 
 module.exports = { LoginScriptExecutor };
-

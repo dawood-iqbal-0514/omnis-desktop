@@ -48,12 +48,18 @@ contextBridge.exposeInMainWorld('automationAPI', {
   // HubSpot AI support
   submitHubSpotAIResponse: (response) => ipcRenderer.invoke('automation:submit-hubspot-ai-response', response),
   onHubSpotAIQuestion: (callback) => ipcRenderer.on('automation:hubspot-ai-question', callback),
+
+  // LinkedIn challenge resolution — opens a modal BrowserWindow with the
+  // checkpoint URL, returns the post-verification cookie jar.
+  resolveLinkedinChallenge: (payload) => ipcRenderer.invoke('automation:resolve-linkedin-challenge', payload),
 });
 
 contextBridge.exposeInMainWorld('cerebrasAPI', {
   setApiKey: (apiKey) => ipcRenderer.invoke('cerebras:set-api-key', apiKey),
   getApiKey: () => ipcRenderer.invoke('cerebras:get-api-key'),
-  sendMessage: (userMessage, chatHistory, platformName) => ipcRenderer.invoke('cerebras:send-message', userMessage, chatHistory, platformName),
+  sendMessage: (userMessage, chatHistory, platformName, connectedPlatforms) => ipcRenderer.invoke('cerebras:send-message', userMessage, chatHistory, platformName, connectedPlatforms),
+  presentResult: (userMessage, actionResults) => ipcRenderer.invoke('cerebras:present-result', userMessage, actionResults),
   extractWorkflow: (chatHistory) => ipcRenderer.invoke('cerebras:extract-workflow', chatHistory),
   resetChat: () => ipcRenderer.invoke('cerebras:reset-chat'),
+  resetChatbot: () => ipcRenderer.invoke('cerebras:reset-chatbot'),
 });

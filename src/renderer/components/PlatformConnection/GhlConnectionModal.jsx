@@ -5,11 +5,11 @@ import { ButtonPlain } from '../Button';
 import { InputSpinner, LoaderMedium } from '../Loader';
 import usePlatformStore from '../../store/platformStore';
 import useToast from '../../hooks/useToast';
-import hubspotLogo from '@assets/logos/hubspot.png';
+import ghlLogo from '@assets/logos/ghl.svg';
 
-const HubspotConnectionModal = ({ isOpen, onClose }) => {
+const GhlConnectionModal = ({ isOpen, onClose }) => {
   const { showSuccess, showError } = useToast();
-  
+
   // Use Zustand selectors to ensure proper reactivity
   const {
     saveConnection,
@@ -27,13 +27,13 @@ const HubspotConnectionModal = ({ isOpen, onClose }) => {
 
   // Use a selector to get the connection object - this makes it reactive
   const connection = usePlatformStore((state) =>
-    state.connections.find((c) => c.platform === 'hubspot')
+    state.connections.find((c) => c.platform === 'ghl')
   );
 
-  const platformId = 'hubspot';
-  
+  const platformId = 'ghl';
+
   const [isLoadingConnection, setIsLoadingConnection] = useState(false);
-  
+
   // Fetch platform connection status when modal opens
   useEffect(() => {
     if (isOpen) {
@@ -68,11 +68,12 @@ const HubspotConnectionModal = ({ isOpen, onClose }) => {
       setHasChanges(false);
       return;
     }
-    
+
     const initialData = {
       apiKey: connection?.credentials?.apiKey || '',
       email: connection?.credentials?.email || '',
       password: '',
+      locationId: connection?.credentials?.locationId || '',
     };
     setFormData(initialData);
     formDataRef.current = initialData;
@@ -104,20 +105,22 @@ const HubspotConnectionModal = ({ isOpen, onClose }) => {
       setSavingField(fieldName);
       try {
         // Debug: Log what we're saving (without logging password value)
-        console.log(`[HubSpot Modal] Saving ${fieldName}:`, {
+        console.log(`[GHL Modal] Saving ${fieldName}:`, {
           hasEmail: !!credentials.email,
           hasPassword: !!credentials.password,
           hasApiKey: !!credentials.apiKey,
+          hasLocationId: !!credentials.locationId,
           email: credentials.email,
           // Don't log password value
         });
-        
+
         const response = await saveConnection(platform, credentials);
         if (response.success) {
           const fieldLabels = {
             apiKey: 'API Key',
             email: 'Email Address',
             password: 'Password',
+            locationId: 'Location ID',
           };
           showSuccess(`${fieldLabels[fieldName] || 'Credentials'} saved successfully`);
           setHasChanges(true);
@@ -159,7 +162,7 @@ const HubspotConnectionModal = ({ isOpen, onClose }) => {
       debounceTimerRef.current = setTimeout(() => {
         const currentFormData = formDataRef.current;
         const currentValue = currentFormData[fieldName]?.trim();
-        
+
         if (currentValue) {
           if (fieldName === 'email') {
             // Email field: only save if password is also filled
@@ -180,13 +183,13 @@ const HubspotConnectionModal = ({ isOpen, onClose }) => {
               // Ensure password is not accidentally the same as apiKey
               const apiKeyValue = currentFormData.apiKey?.trim();
               if (apiKeyValue && currentValue === apiKeyValue) {
-                console.warn('[HubSpot Modal] Password cannot be the same as API Key');
+                console.warn('[GHL Modal] Password cannot be the same as API Key');
                 showError('Password cannot be the same as API Key');
                 setIsSaving(false);
                 setSavingField(null);
                 return;
               }
-              
+
               const credentials = {
                 email: emailValue,
                 password: currentValue, // This is the password field value
@@ -197,7 +200,7 @@ const HubspotConnectionModal = ({ isOpen, onClose }) => {
               setSavingField(null);
             }
           } else {
-            // For apiKey and other fields, save individually
+            // For apiKey, locationId, and other fields, save individually
             const credentials = { [fieldName]: currentValue };
             debouncedSave(platformId, credentials, fieldName);
           }
@@ -260,8 +263,8 @@ const HubspotConnectionModal = ({ isOpen, onClose }) => {
   const handleLogin = async () => {
     setIsLoading(true);
     try {
-      console.log('[HubSpot Modal] handleLogin called');
-      
+      console.log('[GHL Modal] handleLogin called');
+
       // Cancel any pending debounce timer so we save immediately
       if (debounceTimerRef.current) {
         clearTimeout(debounceTimerRef.current);
@@ -273,21 +276,26 @@ const HubspotConnectionModal = ({ isOpen, onClose }) => {
       const localEmail = currentFormData.email?.trim();
       const localPassword = currentFormData.password?.trim();
       const localApiKey = currentFormData.apiKey?.trim();
+      const localLocationId = currentFormData.locationId?.trim();
 
       // Save any unsaved credentials to backend before login
       if (localApiKey) {
-        console.log('[HubSpot Modal] Saving API key before login...');
+        console.log('[GHL Modal] Saving API key before login...');
         await saveConnection(platformId, { apiKey: localApiKey });
       }
+      if (localLocationId) {
+        console.log('[GHL Modal] Saving Location ID before login...');
+        await saveConnection(platformId, { locationId: localLocationId });
+      }
       if (localEmail && localPassword) {
-        console.log('[HubSpot Modal] Saving email/password before login...');
+        console.log('[GHL Modal] Saving email/password before login...');
         await saveConnection(platformId, { email: localEmail, password: localPassword });
       }
 
       // Now fetch full credentials from backend
       const credentialsResponse = await getConnectionCredentials(platformId);
-      console.log('[HubSpot Modal] credentialsResponse:', { success: credentialsResponse.success, hasData: !!credentialsResponse.data });
-      
+      console.log('[GHL Modal] credentialsResponse:', { success: credentialsResponse.success, hasData: !!credentialsResponse.data });
+
       let email, password;
 
       if (credentialsResponse.success && credentialsResponse.data) {
@@ -295,7 +303,7 @@ const HubspotConnectionModal = ({ isOpen, onClose }) => {
         email = credentials?.email;
         password = credentials?.password;
       }
-      
+
       // Fall back to form data if backend credentials are incomplete
       if (!email) email = localEmail;
       if (!password) password = localPassword;
@@ -310,6 +318,7 @@ const HubspotConnectionModal = ({ isOpen, onClose }) => {
       const result = await window.automationAPI.executeLoginScript(platformId, {
         email,
         password,
+        locationId: localLocationId || credentialsResponse?.data?.locationId,
       });
 
       if (result.success) {
@@ -347,7 +356,7 @@ const HubspotConnectionModal = ({ isOpen, onClose }) => {
       if (response.success) {
         setHasChanges(true);
         showSuccess('Platform disconnected successfully.');
-        const initialData = { apiKey: '', email: '', password: '' };
+        const initialData = { apiKey: '', email: '', password: '', locationId: '' };
         setFormData(initialData);
         formDataRef.current = initialData;
         const currentConnections = usePlatformStore.getState().connections;
@@ -371,8 +380,8 @@ const HubspotConnectionModal = ({ isOpen, onClose }) => {
     // Check both the connection object from store AND the local form data
     // This ensures the button enables even if the store hasn't updated yet
     const hasStoreCredentials = !!connection?.hasCredentials;
-    const hasLocalCredentials = !!(formData.apiKey?.trim() && formData.email?.trim() && formData.password?.trim());
-    console.log('[HubSpot Modal] hasApiKeySaved check:', { hasStoreCredentials, hasLocalCredentials, connectionHasCredentials: connection?.hasCredentials });
+    const hasLocalCredentials = !!(formData.apiKey?.trim() && formData.email?.trim() && formData.password?.trim() && formData.locationId?.trim());
+    console.log('[GHL Modal] hasApiKeySaved check:', { hasStoreCredentials, hasLocalCredentials, connectionHasCredentials: connection?.hasCredentials });
     return hasStoreCredentials || hasLocalCredentials;
   };
 
@@ -397,7 +406,7 @@ const HubspotConnectionModal = ({ isOpen, onClose }) => {
       name: 'apiKey',
       label: 'API Key',
       type: 'text',
-      placeholder: 'Enter your HubSpot API key',
+      placeholder: 'Enter your GHL API key',
       required: true,
     },
     {
@@ -411,7 +420,14 @@ const HubspotConnectionModal = ({ isOpen, onClose }) => {
       name: 'password',
       label: 'Password',
       type: 'password',
-      placeholder: 'Enter your HubSpot password',
+      placeholder: 'Enter your GHL password',
+      required: true,
+    },
+    {
+      name: 'locationId',
+      label: 'Location ID',
+      type: 'text',
+      placeholder: 'Enter your GHL Location ID',
       required: true,
     },
   ];
@@ -421,7 +437,7 @@ const HubspotConnectionModal = ({ isOpen, onClose }) => {
       <Modal
         isOpen={isOpen}
         onClose={handleModalClose}
-        title="Connect HubSpot"
+        title="Connect GHL (GoHighLevel)"
         size="md"
         closeOnOutsideClick={false}
         closeOnEscape={false}
@@ -436,12 +452,12 @@ const HubspotConnectionModal = ({ isOpen, onClose }) => {
           {/* Platform Info */}
           <div className="flex items-center gap-3 pb-4 border-b border-border-muted">
             <img
-              src={hubspotLogo}
-              alt="HubSpot logo"
+              src={ghlLogo}
+              alt="GHL logo"
               className="w-10 h-10 object-contain"
             />
             <div>
-              <h3 className="text-lg font-semibold text-text-primary">HubSpot</h3>
+              <h3 className="text-lg font-semibold text-text-primary">GHL (GoHighLevel)</h3>
               <p className="text-sm text-text-secondary">
                 {isFullyConnected
                   ? 'Platform is connected'
@@ -456,7 +472,7 @@ const HubspotConnectionModal = ({ isOpen, onClose }) => {
           {isFullyConnected && (
             <div className="p-4 bg-success/10 border border-success/20 rounded-lg">
               <p className="text-sm text-success font-medium">
-                ✓ HubSpot is connected and ready to use
+                ✓ GHL (GoHighLevel) is connected and ready to use
               </p>
             </div>
           )}
@@ -464,7 +480,7 @@ const HubspotConnectionModal = ({ isOpen, onClose }) => {
           {/* Form Fields */}
           <div className="space-y-4">
             {fields.map((field) => {
-              // Check if field is configured: check connection credentials (apiKey and email are returned from backend)
+              // Check if field is configured: check connection credentials (apiKey, email, locationId are returned from backend)
               const fieldValue = connection?.credentials?.[field.name];
               // For password, the actual value is never returned from backend (security).
               // We detect it's saved via: hasPassword flag (backend) OR email existing
@@ -474,13 +490,13 @@ const HubspotConnectionModal = ({ isOpen, onClose }) => {
                 : !!fieldValue && !savingField;
               const isPassword = field.type === 'password';
               const showPassword = showPasswords[field.name] || false;
-              
-              // When fully connected, only allow API key changes, disable email and password
-              const isFieldDisabled = isFullyConnected 
+
+              // When fully connected, only allow API key and locationId changes, disable email and password
+              const isFieldDisabled = isFullyConnected
                 ? (field.name === 'email' || field.name === 'password')
                 : false;
               const shouldDisableField = isFieldDisabled || isSaving || isLoading;
-              
+
               return (
                 <div key={field.name}>
                   <div className="flex items-center justify-between mb-2">
@@ -569,7 +585,7 @@ const HubspotConnectionModal = ({ isOpen, onClose }) => {
           {needsReLogin && (
             <div className="p-4 bg-amber-500/10 border border-amber-500/20 rounded-lg">
               <p className="text-sm text-amber-400 font-medium">
-                Session expired. Please re-login to continue using HubSpot.
+                Session expired. Please re-login to continue using GHL (GoHighLevel).
               </p>
             </div>
           )}
@@ -618,7 +634,7 @@ const HubspotConnectionModal = ({ isOpen, onClose }) => {
                   Login
                 </ButtonPlain>
                 <p className="mt-2 text-xs text-text-secondary text-center">
-                  One time login is required for performing hubspot tasks
+                  One time login is required for performing GHL tasks
                 </p>
               </>
             )}
@@ -669,5 +685,4 @@ const HubspotConnectionModal = ({ isOpen, onClose }) => {
   );
 };
 
-export default HubspotConnectionModal;
-
+export default GhlConnectionModal;

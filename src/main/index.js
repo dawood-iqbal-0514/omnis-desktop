@@ -1,5 +1,5 @@
 ﻿
-const { app, BrowserWindow, ipcMain } = require('electron');
+const { app, BrowserWindow, ipcMain, shell } = require('electron');
 const path = require('path');
 
 // Load environment variables from .env file if it exists
@@ -73,6 +73,24 @@ function createWindow() {
       contextIsolation: true,
       enableRemoteModule: false,
     },
+  });
+
+  // ─── Block child Electron windows for ALL external links ─────────────────
+  // Anything trying to open a new window (target="_blank", window.open, ...)
+  // must be sent to the user's default external browser. Spawning a child
+  // BrowserWindow loads the URL with no cookies, so platforms like LinkedIn
+  // bounce to a Sign Up page — never useful, always confusing.
+  mainWindow.webContents.setWindowOpenHandler(({ url }) => {
+    if (/^https?:\/\//i.test(url)) shell.openExternal(url);
+    return { action: 'deny' };
+  });
+  // Same for in-page navigations away from our renderer URL.
+  mainWindow.webContents.on('will-navigate', (event, url) => {
+    const allowed = isDev ? 'http://localhost:5173' : 'file://';
+    if (!url.startsWith(allowed)) {
+      event.preventDefault();
+      if (/^https?:\/\//i.test(url)) shell.openExternal(url);
+    }
   });
 
   if (isDev) {

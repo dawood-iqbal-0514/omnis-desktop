@@ -13,6 +13,7 @@ const Platforms = () => {
 
   const {
     isPlatformConnected,
+    fetchUserPlatforms,
   } = usePlatformStore();
 
   // Get all platforms and mark them as comingSoon if not enabled in config
@@ -21,8 +22,14 @@ const Platforms = () => {
     comingSoon: !isPlatformEnabled(platform.id),
   }));
 
-  const handleLinkedInSuccess = (data) => {
-    // LinkedIn handled separately for now
+  const handleLinkedInSuccess = () => {
+    // Connect-success: refresh global connection state so the card flips to "Connected".
+    fetchUserPlatforms();
+  };
+
+  const handleLinkedInClose = (hasChanges) => {
+    setLinkedinModalOpen(false);
+    if (hasChanges) fetchUserPlatforms();
   };
 
   const handlePlatformClick = (platform) => {
@@ -131,7 +138,7 @@ const Platforms = () => {
       {}
       <LinkedInConnection
         isOpen={linkedinModalOpen}
-        onClose={() => setLinkedinModalOpen(false)}
+        onClose={handleLinkedInClose}
         onSuccess={handleLinkedInSuccess}
       />
       

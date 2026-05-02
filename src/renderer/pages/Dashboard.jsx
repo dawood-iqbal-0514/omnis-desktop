@@ -1,24 +1,31 @@
 ﻿import React, { useState, useEffect } from 'react';
 import { Tooltip } from '../components/Tooltip';
 import { LoaderLarge } from '../components/Loader';
-import { HubspotConnectionModal } from '../components/PlatformConnection';
+import { HubspotConnectionModal, GhlConnectionModal, SlackConnectionModal, NotionConnectionModal, SmartleadConnectionModal, LinkedInConnection } from '../components/PlatformConnection';
 import usePlatformStore from '../store/platformStore';
 import useAuthStore from '../store/authStore';
 import { getAllPlatforms, isPlatformEnabled } from '../config/platforms.config';
+import { crmAPI } from '../services/api/crm';
 
 const Dashboard = ({ setActivePage }) => {
   const setSelectedPlatform = usePlatformStore((state) => state.setSelectedPlatform);
-  const { fetchUserPlatforms, isPlatformConnected, loading } = usePlatformStore();
+  const { fetchUserPlatforms, isPlatformConnected, getPlatformConnection, loading } = usePlatformStore();
   const [connectionModalOpen, setConnectionModalOpen] = useState(false);
   const [selectedPlatform, setSelectedPlatformState] = useState(null);
+  // Pending LinkedIn verification challenge URL — when set, the LinkedIn
+  // card's button becomes "Verify on LinkedIn" (one click → opens the
+  // embedded verification window) instead of "Re-Login" (password modal).
+  const [linkedinChallengeUrl, setLinkedinChallengeUrl] = useState(null);
+  const [resolvingChallenge, setResolvingChallenge] = useState(false);
   const user = useAuthStore((state) => state.user);
-  
-  // Fetch user platforms on mount
+
+  // Fetch user platforms + LinkedIn challenge state on mount
   useEffect(() => {
     fetchUserPlatforms();
+    crmAPI.getLinkedinPendingChallenge().then(setLinkedinChallengeUrl).catch(() => {});
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []); // Only run once on mount
-  
+
   // Get first name from user's name
   const firstName = user?.name?.split(' ')[0] || user?.email?.split('@')[0] || 'User';
 
@@ -28,9 +35,50 @@ const Dashboard = ({ setActivePage }) => {
     comingSoon: !isPlatformEnabled(platform.id),
   }));
 
+  const needsReLogin = (platformId) => {
+    const conn = getPlatformConnection(platformId);
+    return conn?.isConnected && !conn?.isLoggedIn;
+  };
+
+  // LinkedIn-specific: a pending challenge URL means "needs verification",
+  // which is different from "needs re-login with new password".
+  const needsVerification = (platformId) =>
+    platformId === 'linkedin' && !!linkedinChallengeUrl;
+
+  /**
+   * Open the embedded LinkedIn verification window directly. After the user
+   * completes the challenge, LinkedIn issues fresh cookies, we save them to
+   * the backend, and refresh dashboard state. No password modal required.
+   */
+  const resolveLinkedinChallenge = async () => {
+    if (!linkedinChallengeUrl || resolvingChallenge) return;
+    if (typeof window.automationAPI?.resolveLinkedinChallenge !== 'function') return;
+    setResolvingChallenge(true);
+    try {
+      let currentCookies = {};
+      try { currentCookies = await crmAPI.getLinkedinCookies(); } catch {}
+      const result = await window.automationAPI.resolveLinkedinChallenge({
+        challengeUrl: linkedinChallengeUrl,
+        currentCookies,
+      });
+      if (result?.success && result?.cookies) {
+        await crmAPI.updateLinkedinCookies(result.cookies);
+        setLinkedinChallengeUrl(null);
+        await fetchUserPlatforms();
+      }
+    } finally {
+      setResolvingChallenge(false);
+    }
+  };
+
   const handleCardClick = (platform) => {
     if (platform.comingSoon) return;
-    // Card click always opens modal
+    // LinkedIn with pending challenge → skip the password modal and go
+    // straight to the verification window.
+    if (needsVerification(platform.id)) {
+      resolveLinkedinChallenge();
+      return;
+    }
     setSelectedPlatformState(platform);
     setConnectionModalOpen(true);
   };
@@ -38,8 +86,17 @@ const Dashboard = ({ setActivePage }) => {
   const handleButtonClick = (platform, e) => {
     e.stopPropagation();
     if (platform.comingSoon) return;
-    
-    if (isPlatformConnected(platform.id)) {
+
+    if (needsVerification(platform.id)) {
+      // Pending LinkedIn challenge → open verification window directly.
+      resolveLinkedinChallenge();
+      return;
+    }
+    if (needsReLogin(platform.id)) {
+      // Session expired — open connection modal to re-login
+      setSelectedPlatformState(platform);
+      setConnectionModalOpen(true);
+    } else if (isPlatformConnected(platform.id)) {
       // If connected, navigate to chat
       setSelectedPlatform(platform);
       setActivePage('chat');
@@ -101,7 +158,18 @@ const Dashboard = ({ setActivePage }) => {
                 alt={`${platform.name} logo`}
                 className="w-12 h-12 object-contain"
               />
-              <h3 className="text-xl font-semibold text-text-primary">{platform.name}</h3>
+              <div className="flex-1">
+                <h3 className="text-xl font-semibold text-text-primary">{platform.name}</h3>
+                {needsVerification(platform.id) ? (
+                  <span className="inline-block mt-1 px-2 py-0.5 text-xs font-medium rounded-full bg-amber-500/15 text-amber-400 border border-amber-500/30">
+                    Verification Required
+                  </span>
+                ) : needsReLogin(platform.id) ? (
+                  <span className="inline-block mt-1 px-2 py-0.5 text-xs font-medium rounded-full bg-amber-500/15 text-amber-400 border border-amber-500/30">
+                    Re-Login Required
+                  </span>
+                ) : null}
+              </div>
             </div>
             <p className="text-text-secondary text-sm mb-4">
               Connect {platform.name} to start automating your workflows
@@ -117,13 +185,19 @@ const Dashboard = ({ setActivePage }) => {
                   className={`w-full px-4 py-2 rounded-lg font-medium transition-colors ${
                     platform.comingSoon
                       ? 'bg-gray-500 text-white cursor-not-allowed'
+                      : (needsVerification(platform.id) || needsReLogin(platform.id))
+                      ? 'bg-amber-500 text-white hover:bg-amber-600'
                       : 'bg-primary-accent text-white hover:bg-primary-accent/90'
                   }`}
-                  disabled={platform.comingSoon}
+                  disabled={platform.comingSoon || (needsVerification(platform.id) && resolvingChallenge)}
                   onClick={(e) => handleButtonClick(platform, e)}
                 >
                   {platform.comingSoon
                     ? 'Coming Soon'
+                    : needsVerification(platform.id)
+                    ? (resolvingChallenge ? 'Verifying…' : 'Verify on LinkedIn')
+                    : needsReLogin(platform.id)
+                    ? 'Re-Login'
                     : isPlatformConnected(platform.id)
                     ? 'Work'
                     : 'Connect'}
@@ -134,8 +208,43 @@ const Dashboard = ({ setActivePage }) => {
         ))}
       </div>
 
+      {selectedPlatform && selectedPlatform.id === 'linkedin' && (
+        <LinkedInConnection
+          isOpen={connectionModalOpen}
+          onClose={handleModalClose}
+        />
+      )}
+
       {selectedPlatform && selectedPlatform.id === 'hubspot' && (
         <HubspotConnectionModal
+          isOpen={connectionModalOpen}
+          onClose={handleModalClose}
+        />
+      )}
+
+      {selectedPlatform && selectedPlatform.id === 'ghl' && (
+        <GhlConnectionModal
+          isOpen={connectionModalOpen}
+          onClose={handleModalClose}
+        />
+      )}
+
+      {selectedPlatform && selectedPlatform.id === 'slack' && (
+        <SlackConnectionModal
+          isOpen={connectionModalOpen}
+          onClose={handleModalClose}
+        />
+      )}
+
+      {selectedPlatform && selectedPlatform.id === 'notion' && (
+        <NotionConnectionModal
+          isOpen={connectionModalOpen}
+          onClose={handleModalClose}
+        />
+      )}
+
+      {selectedPlatform && selectedPlatform.id === 'smartlead' && (
+        <SmartleadConnectionModal
           isOpen={connectionModalOpen}
           onClose={handleModalClose}
         />
