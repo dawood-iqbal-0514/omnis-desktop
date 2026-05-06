@@ -22,13 +22,16 @@ STRICT RULES:
 8. Output raw JSON only. No markdown. No code blocks. No explanation.
 
 LINKEDIN PERSON-DISAMBIGUATION PATTERN (very important):
-When the user wants to perform a LinkedIn action ON a person AND that person is NOT given as a LinkedIn URL or vanity slug — emit a TWO-PART plan:
-  • A first action that SEARCHES for the person via "search_people"
-  • A "followUp" object describing what to do once the user picks one candidate
+If the user's request targets a specific LinkedIn person and the chosen action takes a profileUrn or publicIdentifier, check how the person was named:
+  • Given as a LinkedIn URL (https://www.linkedin.com/in/<slug>/) or a recognizable vanity slug → fill the parameter directly. No search step.
+  • Given by name only (with optional company / location / school) → emit a TWO-PART plan:
+      - First action: "search_people" with the name + any filters as keywords
+      - "followUp" object: the action the user actually wanted, with paramSlot "profileUrn"
+    The disambiguation UI will collect the user's pick and fire the followUp.
 
-Triggering verbs: "send invite/connection request to ...", "send a message to ...", "like ... post", "comment on ... post", "follow ...", "view ... profile", "fetch ... posts", etc.
+This rule is IDENTITY-shaped, not verb-shaped: it applies to every person-targeted action in the catalog (read or write). If the action's required/optional params include profileUrn or publicIdentifier and the user didn't give a slug, you use the search + followUp plan. Do not enumerate verbs in your head — check the action's params.
 
-A LinkedIn URL looks like https://www.linkedin.com/in/<vanity>/ or just a recognizable vanity slug. If the user gave one of those, use the direct path (no search step, no followUp). If they only gave a person's name (and optionally their company / location / school) — disambiguation is REQUIRED.
+Do not ask the user to provide a LinkedIn URL, vanity slug, or handle. The user giving a name is sufficient input — the search step exists to resolve names to profiles. Asking for a slug is treated as a planning failure.
 
 Output shape for the disambiguation case:
 {
@@ -50,11 +53,19 @@ Output shape for the disambiguation case:
 }
 
 Notes:
-- "keywords" should be a free-text query (e.g. "john smith openai" or "data scientist openai san francisco"). It does NOT have to map to an exact name.
-- Only include filters the user actually mentioned. Drop empty filter keys entirely.
-- "network" filter: "F" = 1st-degree, "S" = 2nd-degree. Use "F,S" when the user says "people I know" / "my network".
-- paramSlot is ALWAYS "profileUrn" for LinkedIn person targets — never anything else.
-- "When user says \"this/her/him/that person/them\" referring to a previously-shown candidate, the orchestrator will resolve from chat context — still emit the same disambiguation plan if the prior pick is unclear.
+- "keywords" is a free-text query string. It does not need to map to an exact name.
+- Only include filters the user explicitly stated. Drop empty filter keys. Default is no filters (global search).
+- "network" filter ("F" = 1st-degree, "S" = 2nd-degree) is the SCOPE OF SEARCH, not a relationship description. Apply it only when the user is restricting the search universe to their own network. Possessive pronouns referring to a relationship between the user and the target (status, invite, message) are not a search scope. When uncertain, omit the filter.
+- paramSlot for person-targeted actions is always "profileUrn".
+- Pronouns referring to a previously-shown candidate are resolved from chat context by the orchestrator, not by the prompt.
+
+POST-TARGETED ACTIONS (any action whose required parameter is a post URN — threadUrn, activityUrn, socialDetailUrn):
+The user does not have these URNs. Never ask for them. Resolve via one of the following, depending on what the user gave you:
+- A post URL → extract the activity URN from the URL and fill the parameter directly.
+- A reference to a post the chat already showed this session → leave the URN parameter empty in the plan; the orchestrator binds it from chat context.
+- A reference to a person plus a qualifier about their post, with no URL and no prior post listing in context → plan the resolve chain: search_people followed by get_user_posts. The plan message should explain that the posts will be surfaced and the user picks on the next turn.
+
+The general rule: if a required parameter is an identifier the user has no way of knowing (URN, internal ID), the plan must produce that identifier — by URL parse, by chat-context lookup, or by chaining a fetch that surfaces it. Asking the user for the URN directly is a planning failure.
 `;
 
 class PlanGenerator {
@@ -283,36 +294,129 @@ class PlanGenerator {
   }
 
   /**
-   * If the plan has 2+ actions where:
-   *  - the LAST action's parameters lack `profileUrn` (or have it empty/placeholder), AND
-   *  - a previous action is `search_people`
-   * …pull the last action OUT of `actions[]` and into `out.followUp`. This
-   * recovers from the AI's most common slip-up around the disambiguation
-   * pattern.
+   * Defensive recovery for the AI's most common plan-shape mistakes.
+   *
+   * Two patterns this handles:
+   *
+   * (1) Person-targeted action emitted as step 2 of [search_people, X] with
+   *     missing profileUrn. Promote X to followUp, drop it from the actions
+   *     list. The ChoiceCard will fire after the search and resolve the URN.
+   *
+   * (2) Post-targeted action (comment, like, repost, etc.) emitted with no
+   *     possible way to know its post URN. The user said "comment on satya's
+   *     latest post" — the AI tried to plan comment_on_post directly, which
+   *     fails because no step in the plan produces a threadUrn. We can't
+   *     execute this in one shot with current infrastructure (3-stage chains
+   *     are not yet supported — see LINKEDIN-TODOS item #3). So we replace
+   *     the impossible step with `get_user_posts` and let the user pick a
+   *     post on the next turn ("comment on the first one"). The original
+   *     intent is preserved as a description hint in the followUp.
    */
   _extractFollowUp(plan) {
-    const actions = plan.actions || [];
-    if (plan.followUp || actions.length < 2) return actions;
-
-    const last = actions[actions.length - 1];
-    const prev = actions.slice(0, -1).find((a) => a.actionId === 'search_people');
-    if (!prev) return actions;
+    let actions = plan.actions || [];
+    if (actions.length === 0) return actions;
 
     // Person-targeted actions all use `profileUrn` as their primary slot.
     const PERSON_TARGETED = new Set([
       'send_invite', 'send_message', 'follow', 'unfollow',
       'get_user_posts', 'get_profile', 'get_connection_status',
     ]);
-    const hasProfileUrn = last.parameters?.profileUrn
-                       && typeof last.parameters.profileUrn === 'string'
-                       && last.parameters.profileUrn.startsWith('urn:');
-    if (PERSON_TARGETED.has(last.actionId) && !hasProfileUrn) {
-      // Remove profileUrn placeholder if present (e.g. AI wrote "<TBD>")
-      const params = { ...(last.parameters || {}) };
-      delete params.profileUrn;
-      plan.followUp = { ...last, parameters: params, paramSlot: 'profileUrn' };
-      return actions.slice(0, -1);   // drop the last action
+    // Post-targeted actions and the parameter key each one needs filled.
+    const POST_TARGETED_URN_KEYS = {
+      comment_on_post:    'threadUrn',
+      reply_to_comment:   'threadUrn',
+      like_post:          'threadUrn',
+      unlike_post:        'threadUrn',
+      change_reaction:    'threadUrn',
+      get_post_reactions: 'threadUrn',
+      get_post_comments:  'socialDetailUrn',
+      repost:             'activityUrn',
+      save_post:          'activityUrn',
+      unsave_post:        'activityUrn',
+    };
+
+    // A "real" URN matches `urn:li:<resource>:<id>` where <id> is non-empty
+    // and not wrapped in <angle> placeholders. Hallucinated URNs from the AI
+    // commonly look like `urn:li:ugcPost:<id>` or just `urn:li:ugcPost:` —
+    // both fail this regex.
+    const REAL_URN_RE = /^urn:li:[a-zA-Z_]+:[A-Za-z0-9_\-:()=,]+$/;
+    const isRealUrn = (v) => typeof v === 'string' && REAL_URN_RE.test(v) && !/[<>]/.test(v);
+
+    const stripBadUrn = (action, key) => {
+      if (!isRealUrn(action.parameters?.[key])) {
+        const params = { ...(action.parameters || {}) };
+        delete params[key];
+        return { ...action, parameters: params };
+      }
+      return action;
+    };
+
+    const last = actions[actions.length - 1];
+
+    // ── Case A: single post-targeted action with no URN ─────────────────────
+    // E.g. AI emitted `[comment_on_post]` directly. We need a search + posts
+    // chain to even reach a valid threadUrn.
+    if (actions.length === 1 && POST_TARGETED_URN_KEYS[last.actionId]) {
+      const urnKey = POST_TARGETED_URN_KEYS[last.actionId];
+      if (!isRealUrn(last.parameters?.[urnKey])) {
+        const intentLabel = last.description || last.actionId;
+        console.log(`[PlanGenerator] Promoting single post-targeted action "${last.actionId}" → search+posts chain (urn missing)`);
+        plan.followUp = {
+          actionId:    'get_user_posts',
+          platform:    'linkedin',
+          description: 'Show recent posts',
+          parameters:  { count: 5 },
+          paramSlot:   'profileUrn',
+        };
+        plan.message =
+          `Find the right person, then show their recent posts. ` +
+          `Once they appear, tell me which one to ${intentLabel.toLowerCase()}.`;
+        // Replace the broken single action with search_people.
+        return [{
+          actionId:    'search_people',
+          platform:    'linkedin',
+          description: 'Search people',
+          parameters:  {},
+        }];
+      }
     }
+
+    if (actions.length < 2) return actions;
+
+    const hasSearchPeople = actions.slice(0, -1).some((a) => a.actionId === 'search_people');
+
+    // ── Case B: [search_people, X] where X is person-targeted, no profileUrn
+    if (hasSearchPeople && PERSON_TARGETED.has(last.actionId) && !plan.followUp) {
+      if (!isRealUrn(last.parameters?.profileUrn)) {
+        const cleaned = stripBadUrn(last, 'profileUrn');
+        console.log(`[PlanGenerator] Promoting "${last.actionId}" → followUp (profileUrn missing)`);
+        plan.followUp = { ...cleaned, paramSlot: 'profileUrn' };
+        return actions.slice(0, -1);
+      }
+    }
+
+    // ── Case C: [search_people, ..., X] where X is post-targeted, no URN ───
+    // Drop X, replace with get_user_posts followUp. Preserve the user's
+    // original intent in the plan message so they know what to type next.
+    if (hasSearchPeople && POST_TARGETED_URN_KEYS[last.actionId]) {
+      const urnKey = POST_TARGETED_URN_KEYS[last.actionId];
+      if (!isRealUrn(last.parameters?.[urnKey])) {
+        const intentLabel = last.description || last.actionId;
+        console.log(`[PlanGenerator] Replacing "${last.actionId}" with get_user_posts (${urnKey} missing)`);
+        plan.followUp = {
+          actionId:    'get_user_posts',
+          platform:    'linkedin',
+          description: 'Show recent posts',
+          parameters:  { count: 5 },
+          paramSlot:   'profileUrn',
+        };
+        plan.message =
+          `Find the right person, then show their recent posts. ` +
+          `Once they appear, tell me which one to ${intentLabel.toLowerCase()}.`;
+        return actions.slice(0, -1);
+      }
+    }
+
     return actions;
   }
 

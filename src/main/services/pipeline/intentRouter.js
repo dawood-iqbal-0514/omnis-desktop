@@ -9,15 +9,22 @@ Classify the user message and output ONLY a JSON object. Nothing else.
 If the user is making conversation (greeting, question, thanks, chit-chat):
 {"type":"conversation","conversationResponse":"your short friendly reply"}
 
-If the user wants to perform a task (create, send, update, delete, search, list something):
+If the user is requesting an action — anything they want done on a platform, on an entity, or to a person:
 {"type":"task","platforms":["platform"],"category":"contacts","operation":"create","keywords":["word1","word2"],"confidence":0.9,"needsClarification":false,"clarificationMessage":null}
 
-STRICT RULES:
-1. For greetings (hi, hello, hey, etc): respond with a short friendly greeting like "Hey! What would you like to do today?" Do NOT ask about platforms. Do NOT list platforms.
-2. For "what can you do?": say something like "I can create contacts, send messages, manage campaigns, and more. Just tell me what you need!" Do NOT list platform names.
-3. NEVER mention: APIs, integrations, tokens, scripts, endpoints, Google Drive, Trello, Asana, or any platform NOT in the connected list above.
-4. ONLY reference platforms from the connected list: {platformList}
-5. Output raw JSON only. No markdown. No explanation. No code blocks.`;
+CLASSIFICATION RULES:
+- Default to task. Classify as conversation only when the message is unambiguously chit-chat with no actionable verb and no reference to a platform-specific entity (person, post, contact, channel, deal, etc.).
+- A request that refers to a real-world entity that lives on a connected platform is a task. Pick the platform from context and the entity type — do not require the platform name to be spelled out.
+- The user's message is interpreted in light of the prior turns. If the assistant just asked a clarifying question, the user's reply continues that task — re-emit the prior task's classification rather than resetting.
+- Never re-interpret an action request as the user expressing an opinion or sharing thoughts. The user is here to operate the system, not to converse.
+
+CONVERSATION RULES (when the message really is chit-chat):
+- Greetings: short friendly reply like "Hey! What would you like to do today?" — do not list platforms.
+- "What can you do?": describe capabilities in terms of outcomes ("I can create contacts, send messages, manage campaigns, etc."). Do not name specific platforms.
+
+OUTPUT RULES:
+- NEVER mention APIs, integrations, tokens, scripts, endpoints, or any platform not in the connected list: {platformList}.
+- Output raw JSON only. No markdown, no explanation, no code blocks.`;
 
 class IntentRouter {
   /**
@@ -26,9 +33,17 @@ class IntentRouter {
    * @param {string[]} connectedPlatforms - List of connected platform names
    * @returns {Promise<object>} Parsed intent object
    */
-  async classify(userMessage, connectedPlatforms) {
+  async classify(userMessage, connectedPlatforms, chatHistory = []) {
     const platformList = connectedPlatforms.join(', ');
     const systemPrompt = INTENT_SYSTEM_PROMPT.replace('{platformList}', platformList);
+
+    // Trim history to last 6 turns — enough for follow-up references like
+    // "go ahead", "the latest one", "just comment" to resolve back to the
+    // task that was interrupted, without paying for a long context window.
+    const trimmedHistory = (chatHistory || []).slice(-6).map((msg) => ({
+      type:    msg.type || msg.role || 'user',
+      content: msg.content || msg.text || '',
+    }));
 
     try {
       console.log('[IntentRouter] System prompt being sent:', systemPrompt.substring(0, 200));
@@ -36,7 +51,7 @@ class IntentRouter {
 
       const response = await CerebrasService.sendMessage(
         userMessage,
-        [],
+        trimmedHistory,
         null,
         systemPrompt,
         { temperature: 0, max_tokens: 300 }

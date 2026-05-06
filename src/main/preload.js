@@ -63,3 +63,10 @@ contextBridge.exposeInMainWorld('cerebrasAPI', {
   resetChat: () => ipcRenderer.invoke('cerebras:reset-chat'),
   resetChatbot: () => ipcRenderer.invoke('cerebras:reset-chatbot'),
 });
+
+// v2 typed-flow channel — renderer sends structured events (pick, ask,
+// approve, cancel, menu, execute_result) to resume an in-progress flow,
+// receives the next card to render.
+contextBridge.exposeInMainWorld('flowAPI', {
+  event: (payload) => ipcRenderer.invoke('flow:event', payload),
+});

@@ -79,8 +79,11 @@
           "did", "accept", "still", "outstanding",
           "linkedin"
         ],
-        "requiredParams": [
-          "publicIdentifier"
+        "requiredParams": [],
+        "optionalParams": [
+          "publicIdentifier",
+          "profileUrn",
+          "memberId"
         ],
         "stepLabel": "Check connection status"
       },

@@ -66,15 +66,10 @@ function setupCerebrasIPC() {
               connectedPlatforms || null
             );
 
-            return {
-              success: true,
-              data: {
-                type: response.type,
-                message: response.message,
-                plan: response.plan,
-                executionJSON: response.executionJSON
-              }
-            };
+            // Pass the full response through. v2 flow responses carry a
+            // `card` field that the renderer matches on; legacy responses
+            // carry `plan` / `executionJSON` / `message`.
+            return { success: true, data: response };
           } catch (pipelineError) {
             console.error('❌ Pipeline error:', pipelineError);
             console.error('❌ Pipeline error stack:', pipelineError.stack);
@@ -111,6 +106,24 @@ function setupCerebrasIPC() {
       } catch (error) {
         console.error('❌ Cerebras present-result error:', error);
         return { success: false, error: error.message };
+      }
+    });
+
+    // ─── v2 flow event channel ────────────────────────────────────────────
+    // The renderer sends structured events (pick, ask, approve, cancel,
+    // menu, execute_result, execute_error) back to resume an in-progress
+    // typed flow. Each call returns the next card the renderer should
+    // display, or 'fallback' if v2 doesn't know what to do.
+    ipcMain.handle('flow:event', async (event, eventPayload) => {
+      try {
+        if (!PipelineOrchestrator) {
+          return { success: false, error: 'PipelineOrchestrator not loaded.' };
+        }
+        const card = await PipelineOrchestrator.processFlowEvent(eventPayload || {});
+        return { success: true, data: card };
+      } catch (err) {
+        console.error('❌ flow:event error:', err);
+        return { success: false, error: err.message };
       }
     });
 

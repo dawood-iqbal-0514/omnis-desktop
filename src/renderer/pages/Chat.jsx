@@ -3,6 +3,13 @@ import Confetti from 'react-confetti';
 import { ButtonPlain, ButtonIconed } from '../components/Button';
 import { LoaderSmall } from '../components/Loader';
 import { ExecutionPlanCard, ExecutionLogs, ResultRenderer, ChoiceCard } from '../components/Chat';
+import {
+  PostChoiceCard,
+  ActionMenuCard,
+  CommentApprovalCard,
+  AskCard,
+  ApprovalCard,
+} from '../components/Chat/cards';
 import { PlatformSelectionModal } from '../components/Modal';
 import usePlatformStore from '../store/platformStore';
 import { formatTimeLocal12Hour } from '../utils/date';
@@ -30,6 +37,10 @@ const Chat = ({ setActivePage }) => {
   const [isSubmittingAIResponse, setIsSubmittingAIResponse] = useState(false);
   // Active disambiguation: { candidates, total, start, count, query, followUp, userQuestion, loadingMore }
   const [activeChoice, setActiveChoice] = useState(null);
+  // Active v2 flow card — typed kind ∈ {people_picker, post_picker, ask, approve, menu, execute_request, ...}
+  const [activeFlowCard, setActiveFlowCard] = useState(null);
+  // Visible spinner when an AI subtask or backend call is in flight inside a flow.
+  const [flowBusyLabel, setFlowBusyLabel] = useState(null);
   const messagesEndRef = useRef(null);
   const inputRef = useRef(null);
 
@@ -154,6 +165,12 @@ const Chat = ({ setActivePage }) => {
         console.log('📨 Response type:', responseType);
         console.log('📨 Plan data:', result.data.plan);
 
+        // ── v2 typed flow card ────────────────────────────────────────────
+        if (responseType === 'flow') {
+          await handleFlowCard(result.data.card);
+          return;
+        }
+
         if (responseType === 'plan') {
           // Execution plan ready - show confetti
           console.log('🎉 Showing confetti and plan card');
@@ -226,6 +243,228 @@ const Chat = ({ setActivePage }) => {
     }
   };
 
+
+  // ── v2 typed flow handling ─────────────────────────────────────────────────
+
+  /**
+   * Process a v2 flow card. Some kinds (execute_request) auto-run a backend
+   * action and immediately tick the flow forward; others (people_picker,
+   * post_picker, ask, approve, menu) wait for user interaction by setting
+   * activeFlowCard. The flow stays alive in main until cancelled or completed.
+   */
+  const handleFlowCard = async (card) => {
+    if (!card) return;
+
+    switch (card.kind) {
+      case 'execute_request':
+        await runFlowAction(card);
+        return;
+
+      case 'people_picker':
+      case 'post_picker':
+      case 'conversation_picker':
+      case 'generic_picker':
+      case 'ask':
+      case 'approve':
+      case 'menu':
+        setActiveFlowCard(card);
+        return;
+
+      case 'prose_then_menu':
+        // Append the AI summary as a chat message, then show the menu again.
+        if (card.text) {
+          setMessages(prev => [...prev, {
+            id: Date.now(),
+            type: 'bot',
+            content: card.text,
+            timestamp: new Date().toISOString(),
+          }]);
+        }
+        setActiveFlowCard({
+          kind:    'menu',
+          chatId:  card.chatId,
+          target:  card.menu?.target || {},
+          options: card.menu?.options || [],
+        });
+        return;
+
+      case 'prose':
+        setActiveFlowCard(null);
+        setMessages(prev => [...prev, {
+          id: Date.now(),
+          type: 'bot',
+          content: card.text || '',
+          timestamp: new Date().toISOString(),
+        }]);
+        return;
+
+      case 'result': {
+        setActiveFlowCard(null);
+        // Try the structured result presenter; fall back to a plain success.
+        let resultSpec = null;
+        try {
+          if (card.result && typeof window.cerebrasAPI?.presentResult === 'function') {
+            const lastUserMsg = [...messages].reverse().find((m) => m.type === 'user');
+            const userQuestion = lastUserMsg?.content || '';
+            const platform = card.planSummary?.[0]?.platform || 'linkedin';
+            const actionId = card.planSummary?.[card.planSummary.length - 1]?.actionId || '';
+            const presented = await window.cerebrasAPI.presentResult(userQuestion, [{
+              platform,
+              actionId,
+              data: card.result?.data ?? card.result,
+            }]);
+            if (presented?.success && presented?.data?.spec) resultSpec = presented.data.spec;
+          }
+        } catch (e) { /* fall through to default text */ }
+
+        setMessages(prev => [...prev, resultSpec
+          ? { id: Date.now(), type: 'result', spec: resultSpec, timestamp: new Date().toISOString() }
+          : { id: Date.now(), type: 'bot', content: `✅ ${card.label || 'Done'}`, timestamp: new Date().toISOString() },
+        ]);
+        return;
+      }
+
+      case 'error':
+        setActiveFlowCard(null);
+        if (card.linkedinChallenge?.challengeUrl) {
+          const ok = await resolveLinkedInChallenge(card.linkedinChallenge.challengeUrl);
+          if (ok) {
+            // After verification, ask main to retry the failed step.
+            const nextCard = await dispatchFlowEvent({ kind: 'retry' });
+            if (nextCard) await handleFlowCard(nextCard);
+          }
+          return;
+        }
+        setMessages(prev => [...prev, {
+          id: Date.now(),
+          type: 'bot',
+          content: `❌ ${card.message || 'Something went wrong.'}`,
+          timestamp: new Date().toISOString(),
+        }]);
+        return;
+
+      default:
+        console.warn('[Chat] Unknown flow card kind:', card.kind);
+        setActiveFlowCard(null);
+    }
+  };
+
+  /** Send a structured event to the v2 executor and process the next card. */
+  const dispatchFlowEvent = async (eventPayload) => {
+    if (!window.flowAPI?.event) return null;
+    const res = await window.flowAPI.event(eventPayload);
+    if (!res?.success) {
+      setMessages(prev => [...prev, {
+        id: Date.now(),
+        type: 'bot',
+        content: `❌ Flow error: ${res?.error || 'unknown error'}`,
+        timestamp: new Date().toISOString(),
+      }]);
+      return null;
+    }
+    return res.data?.card || res.data;
+  };
+
+  /**
+   * Run a backend action requested by the v2 flow. Handles LinkedIn
+   * challenges inline. Sends the result back to main as a flow event so
+   * the executor can advance to the next stage.
+   */
+  const runFlowAction = async (card) => {
+    setActiveFlowCard({ kind: 'running', label: card.label });
+    try {
+      const raw = await crmAPI.executeAction(card.platform, card.actionId, card.params || {});
+      const result = (raw && typeof raw === 'object' && 'data' in raw) ? raw.data : raw;
+      const nextCard = await dispatchFlowEvent({
+        kind:      'execute_result',
+        stageIdx:  card.stageIdx,
+        result,
+      });
+      if (nextCard) await handleFlowCard(nextCard);
+    } catch (err) {
+      // LinkedIn challenge: resolve inline and retry same step.
+      if (err.linkedinChallenge?.challengeUrl) {
+        const ok = await resolveLinkedInChallenge(err.linkedinChallenge.challengeUrl);
+        if (ok) {
+          await runFlowAction(card);   // re-fire same execute_request
+          return;
+        }
+      }
+      const nextCard = await dispatchFlowEvent({
+        kind: 'execute_error',
+        stageIdx: card.stageIdx,
+        message: err.message,
+        linkedinChallenge: err.linkedinChallenge || null,
+      });
+      if (nextCard) await handleFlowCard(nextCard);
+    }
+  };
+
+  // Card-specific user-action handlers — each sends a structured flow event
+  // back to main and processes the next card. Each one shows a "working"
+  // banner during the round-trip so the user has feedback.
+  const onPeoplePick = async (candidate) => {
+    setActiveFlowCard(null);
+    setFlowBusyLabel('Loading next step…');
+    try {
+      const next = await dispatchFlowEvent({ kind: 'pick', value: candidate });
+      if (next) await handleFlowCard(next);
+    } finally { setFlowBusyLabel(null); }
+  };
+  const onPostPick = async (post) => {
+    setActiveFlowCard(null);
+    setFlowBusyLabel('Loading next step…');
+    try {
+      const next = await dispatchFlowEvent({ kind: 'pick', value: post });
+      if (next) await handleFlowCard(next);
+    } finally { setFlowBusyLabel(null); }
+  };
+  const onAskSubmit = async (value) => {
+    setActiveFlowCard(null);
+    setFlowBusyLabel('Loading next step…');
+    try {
+      const next = await dispatchFlowEvent({ kind: 'ask', value });
+      if (next) await handleFlowCard(next);
+    } finally { setFlowBusyLabel(null); }
+  };
+  const onApproveSubmit = async (editedBody) => {
+    setActiveFlowCard(null);
+    setFlowBusyLabel('Posting…');
+    try {
+      const next = await dispatchFlowEvent({ kind: 'approve', editedBody });
+      if (next) await handleFlowCard(next);
+    } finally { setFlowBusyLabel(null); }
+  };
+  const onMenuPick = async (option) => {
+    // Loading affordance: mark the clicked option as busy AND show a global
+    // banner so the user knows AI is thinking. Cerebras calls can take 3-8s.
+    setActiveFlowCard((prev) => prev && prev.kind === 'menu'
+      ? {
+          ...prev,
+          options: (prev.options || []).map((o) =>
+            o.id === option.id ? { ...o, loading: true } : { ...o, loading: false }
+          ),
+        }
+      : prev,
+    );
+    setFlowBusyLabel(
+      option.id === 'analyze'  ? 'Analyzing the post…' :
+      option.id === 'generate' ? 'Drafting your comment…' :
+      'Working…',
+    );
+    try {
+      const next = await dispatchFlowEvent({ kind: 'menu', option });
+      setActiveFlowCard(null);
+      if (next) await handleFlowCard(next);
+    } finally {
+      setFlowBusyLabel(null);
+    }
+  };
+  const onFlowCancel = async () => {
+    setActiveFlowCard(null);
+    const next = await dispatchFlowEvent({ kind: 'cancel' });
+    if (next) await handleFlowCard(next);
+  };
 
   const handleApprovePlan = async () => {
     if (!pendingPlan) return;
@@ -791,9 +1030,8 @@ const Chat = ({ setActivePage }) => {
             <ExecutionLogs logs={executionLogs} />
           )}
 
-          {/* Disambiguation choice card — appears when a plan's search step
-              returned multiple candidates and we need the user to pick one
-              before firing the deferred followUp action (send_invite, etc.). */}
+          {/* Disambiguation choice card — legacy, used by older plan + followUp
+              flows for HubSpot, Slack, etc. v2 flows use the cards below. */}
           {activeChoice && (
             <ChoiceCard
               candidates={activeChoice.candidates}
@@ -805,6 +1043,76 @@ const Chat = ({ setActivePage }) => {
               onShowMore={handleChoiceShowMore}
               onCancel={handleChoiceCancel}
             />
+          )}
+
+          {/* v2 typed flow cards — one renderer per kind */}
+          {activeFlowCard?.kind === 'people_picker' && (
+            <ChoiceCard
+              candidates={activeFlowCard.candidates}
+              total={activeFlowCard.candidates?.length}
+              hasMore={false}
+              followUpLabel={activeFlowCard.followUpLabel || 'Continue'}
+              onPick={onPeoplePick}
+              onCancel={onFlowCancel}
+            />
+          )}
+          {activeFlowCard?.kind === 'post_picker' && (
+            <PostChoiceCard
+              candidates={activeFlowCard.candidates}
+              followUpLabel={activeFlowCard.followUpLabel || 'Continue'}
+              onPick={onPostPick}
+              onCancel={onFlowCancel}
+            />
+          )}
+          {activeFlowCard?.kind === 'ask' && (
+            <AskCard
+              prompt={activeFlowCard.prompt}
+              slot={activeFlowCard.slot}
+              type={activeFlowCard.type}
+              onSubmit={onAskSubmit}
+              onCancel={onFlowCancel}
+            />
+          )}
+          {activeFlowCard?.kind === 'approve' && activeFlowCard.body != null && (
+            <CommentApprovalCard
+              draftBody={activeFlowCard.body}
+              draftSource={activeFlowCard.draftSource}
+              target={activeFlowCard.target || {}}
+              onApprove={onApproveSubmit}
+              onCancel={onFlowCancel}
+            />
+          )}
+          {activeFlowCard?.kind === 'approve' && activeFlowCard.body == null && (
+            <ApprovalCard
+              actionLabel={activeFlowCard.actionLabel}
+              slotPreview={activeFlowCard.slotPreview}
+              onApprove={() => onApproveSubmit(null)}
+              onCancel={onFlowCancel}
+            />
+          )}
+          {activeFlowCard?.kind === 'menu' && (
+            <ActionMenuCard
+              target={activeFlowCard.target}
+              options={activeFlowCard.options}
+              onPick={onMenuPick}
+              onCancel={onFlowCancel}
+            />
+          )}
+          {activeFlowCard?.kind === 'running' && (
+            <div className="flex justify-start">
+              <div className="bg-[var(--color-base-background-light)] rounded-lg px-4 py-3 border border-border-muted text-sm text-text-secondary flex items-center gap-2">
+                <LoaderSmall />
+                <span>{activeFlowCard.label || 'Working...'}</span>
+              </div>
+            </div>
+          )}
+          {flowBusyLabel && (
+            <div className="flex justify-start">
+              <div className="bg-primary-accent/5 rounded-lg px-4 py-3 border border-primary-accent/30 text-sm text-text-secondary flex items-center gap-2">
+                <LoaderSmall />
+                <span>{flowBusyLabel}</span>
+              </div>
+            </div>
           )}
 
           {isTyping && (
